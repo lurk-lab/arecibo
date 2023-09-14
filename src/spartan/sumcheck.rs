@@ -1,3 +1,6 @@
+//! define sumcheck module
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
 use crate::errors::NovaError;
 use crate::spartan::polys::{
   multilinear::MultilinearPolynomial,
@@ -8,17 +11,20 @@ use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// SumcheckProof
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub(crate) struct SumcheckProof<G: Group> {
+pub struct SumcheckProof<G: Group> {
   compressed_polys: Vec<CompressedUniPoly<G::Scalar>>,
 }
 
 impl<G: Group> SumcheckProof<G> {
+  /// new a sumcheck proof
   pub fn new(compressed_polys: Vec<CompressedUniPoly<G::Scalar>>) -> Self {
     Self { compressed_polys }
   }
 
+  /// verify sumcheck proof
   pub fn verify(
     &self,
     claim: G::Scalar,
@@ -137,6 +143,7 @@ impl<G: Group> SumcheckProof<G> {
     ))
   }
 
+  /// prove_quad_batch
   pub fn prove_quad_batch<F>(
     claim: &G::Scalar,
     num_rounds: usize,

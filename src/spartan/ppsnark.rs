@@ -34,12 +34,12 @@ use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-fn vec_to_arr<T, const N: usize>(v: Vec<T>) -> [T; N] {
+pub(crate) fn vec_to_arr<T, const N: usize>(v: Vec<T>) -> [T; N] {
   v.try_into()
     .unwrap_or_else(|v: Vec<T>| panic!("Expected a Vec of length {} but it was {}", N, v.len()))
 }
 
-struct IdentityPolynomial<Scalar: PrimeField> {
+pub(crate) struct IdentityPolynomial<Scalar: PrimeField> {
   ell: usize,
   _p: PhantomData<Scalar>,
 }
@@ -321,12 +321,13 @@ pub trait SumcheckEngine<G: Group> {
   fn final_claims(&self) -> Vec<Vec<G::Scalar>>;
 }
 
-struct ProductSumcheckInstance<G: Group> {
+/// ProductSumcheckInstance
+pub struct ProductSumcheckInstance<G: Group> {
   pub(crate) claims: Vec<G::Scalar>, // claimed products
   pub(crate) comm_output_vec: Vec<Commitment<G>>,
 
-  input_vec: Vec<Vec<G::Scalar>>,
-  output_vec: Vec<Vec<G::Scalar>>,
+  pub(crate) input_vec: Vec<Vec<G::Scalar>>,
+  pub(crate) output_vec: Vec<Vec<G::Scalar>>,
 
   poly_A: MultilinearPolynomial<G::Scalar>,
   poly_B_vec: Vec<MultilinearPolynomial<G::Scalar>>,
@@ -335,6 +336,7 @@ struct ProductSumcheckInstance<G: Group> {
 }
 
 impl<G: Group> ProductSumcheckInstance<G> {
+  /// new a productsumcheck instance
   pub fn new(
     ck: &CommitmentKey<G>,
     input_vec: Vec<Vec<G::Scalar>>, // list of input vectors
@@ -408,6 +410,7 @@ impl<G: Group> ProductSumcheckInstance<G> {
 
     // absorb the output commitment and the claimed product
     transcript.absorb(b"o", &comm_output_vec.as_slice());
+    println!("prove comm_output_vec {:?}", comm_output_vec.as_slice());
     transcript.absorb(b"c", &claims.as_slice());
 
     // generate randomness for the eq polynomial
@@ -1019,6 +1022,7 @@ where
     let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
     let poly_vec = vec![&Az, &Bz, &Cz];
     transcript.absorb(b"e", &eval_vec.as_slice()); // c_vec is already in the transcript
+                                                   // note: c is used for RLC
     let c = transcript.squeeze(b"c")?;
     let w = PolyEvalWitness::batch(&poly_vec, &c);
     let u = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
@@ -1129,6 +1133,7 @@ where
       &mut transcript,
     )?;
 
+    // r_sat is the sumcheck challenge
     let (sc_sat, r_sat, claims_mem, claims_outer, claims_inner) = Self::prove_inner(
       &mut mem_sc_inst,
       &mut outer_sc_inst,
@@ -1145,7 +1150,7 @@ where
     let eval_right_vec = claims_mem[2].clone();
     let eval_output_vec = claims_mem[3].clone();
 
-    // claims from the end of sum-check
+    // claims from the end of sum-check, i.e. final claims
     let (eval_Az, eval_Bz): (G::Scalar, G::Scalar) = (claims_outer[0][1], claims_outer[0][2]);
     let eval_Cz = MultilinearPolynomial::evaluate_with(&Cz, &r_sat);
     let eval_E = MultilinearPolynomial::evaluate_with(&E, &r_sat);
@@ -1177,16 +1182,17 @@ where
       r.extend(&[c]);
       r
     };
+    let r_prod = rand_ext[1..].to_vec();
     let eval_input_vec = mem_sc_inst
       .input_vec
       .iter()
-      .map(|i| MultilinearPolynomial::evaluate_with(i, &rand_ext[1..]))
+      .map(|i| MultilinearPolynomial::evaluate_with(i, &r_prod))
       .collect::<Vec<G::Scalar>>();
 
     let eval_output2_vec = mem_sc_inst
       .output_vec
       .iter()
-      .map(|o| MultilinearPolynomial::evaluate_with(o, &rand_ext[1..]))
+      .map(|o| MultilinearPolynomial::evaluate_with(o, &r_prod))
       .collect::<Vec<G::Scalar>>();
 
     // add claimed evaluations to the transcript
@@ -1207,7 +1213,8 @@ where
       s_vec
     };
 
-    // take weighted sum of input, output, and their commitments
+    // take weighted sum (random linear combination) of input, output, and their commitments
+    // product is `initial claim`
     let product = mem_sc_inst
       .claims
       .iter()
@@ -1276,17 +1283,16 @@ where
       },
     ));
 
-    // eval_output2 = output(rand_ext[1..])
+    // eval_output2 = output(r_prod)
     w_u_vec.push((
       PolyEvalWitness { p: poly_output },
       PolyEvalInstance {
         c: comm_output,
-        x: rand_ext[1..].to_vec(),
+        x: r_prod.clone(),
         e: eval_output2,
       },
     ));
 
-    let r_prod = rand_ext[1..].to_vec();
     // row-related and col-related claims of polynomial evaluations to aid the final check of the sum-check
     let evals = [
       &pk.S_repr.row,
@@ -1299,7 +1305,7 @@ where
       &pk.S_repr.col_audit_ts,
     ]
     .into_par_iter()
-    .map(|p| MultilinearPolynomial::evaluate_with(p, &r_prod))
+    .map(|p| MultilinearPolynomial::evaluate_with(p, &r_prod.clone()))
     .collect::<Vec<G::Scalar>>();
 
     let eval_row = evals[0];
@@ -1699,6 +1705,7 @@ where
       r.extend(&[c]);
       r
     };
+    let r_prod = rand_ext[1..].to_vec();
 
     // add claimed evaluations to the transcript
     let evals = self
@@ -1765,14 +1772,13 @@ where
       e: product,
     });
 
-    // eval_output2 = output(rand_ext[1..])
+    // eval_output2 = output(r_prod)
     u_vec.push(PolyEvalInstance {
       c: comm_output,
-      x: rand_ext[1..].to_vec(),
+      x: r_prod.clone(),
       e: eval_output2,
     });
 
-    let r_prod = rand_ext[1..].to_vec();
     // row-related and col-related claims of polynomial evaluations to aid the final check of the sum-check
     // we can batch all the claims
     transcript.absorb(
