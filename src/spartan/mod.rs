@@ -11,7 +11,7 @@ pub(crate) mod math;
 pub mod polys;
 pub mod ppsnark;
 pub mod snark;
-pub mod sumcheck;
+mod sumcheck;
 
 use crate::{traits::Group, Commitment};
 use ff::Field;
