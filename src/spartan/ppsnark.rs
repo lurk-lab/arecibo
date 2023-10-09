@@ -410,7 +410,6 @@ impl<G: Group> ProductSumcheckInstance<G> {
 
     // absorb the output commitment and the claimed product
     transcript.absorb(b"o", &comm_output_vec.as_slice());
-    println!("prove comm_output_vec {:?}", comm_output_vec.as_slice());
     transcript.absorb(b"c", &claims.as_slice());
 
     // generate randomness for the eq polynomial

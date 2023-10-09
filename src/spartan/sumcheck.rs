@@ -95,6 +95,7 @@ impl<G: Group> SumcheckProof<G> {
       )
   }
 
+  /// prove_quad
   pub fn prove_quad<F>(
     claim: &G::Scalar,
     num_rounds: usize,
@@ -248,6 +249,7 @@ impl<G: Group> SumcheckProof<G> {
       )
   }
 
+  /// prove_cubic_with_additive_term
   pub fn prove_cubic_with_additive_term<F>(
     claim: &G::Scalar,
     num_rounds: usize,

@@ -107,7 +107,7 @@ impl<G: Group> MemoryOfflineSumcheckInstance<G> {
 
 impl<G: Group> SumcheckEngine<G> for MemoryOfflineSumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
-    self.0.claims.to_vec()
+    vec![G::Scalar::ZERO; 2]
   }
 
   fn degree(&self) -> usize {
@@ -142,7 +142,7 @@ pub struct LookupSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
 
   read_row: G::Scalar,
   write_row: G::Scalar,
-  gamma: G::Scalar,
+  fingerprint_gamma: G::Scalar,
 
   comm_output_arr: [CompressedCommitment<G>; 2],
   claims_product_arr: [G::Scalar; 2],
@@ -200,7 +200,7 @@ where
   pub fn prove(
     ck: &CommitmentKey<G>,
     pk: &ProverKey<G, EE>,
-    gamma: G::Scalar,
+    fingerprint_gamma: G::Scalar,
     read_row: G::Scalar,
     write_row: G::Scalar,
     initial_table: Vec<(G::Scalar, G::Scalar, G::Scalar)>,
@@ -209,9 +209,9 @@ where
     // a list of polynomial evaluation claims that will be batched
     let mut w_u_vec = Vec::new();
 
-    let gamma_square = gamma * gamma;
+    let gamma_square = fingerprint_gamma * fingerprint_gamma;
     let hash_func = |addr: &G::Scalar, val: &G::Scalar, ts: &G::Scalar| -> G::Scalar {
-      gamma - (*ts * gamma_square + *val * gamma + *addr)
+      fingerprint_gamma - (*ts * gamma_square + *val * fingerprint_gamma + *addr)
     };
     // init_row
     // TODO: initial_table need to be put in setup phase
@@ -229,7 +229,7 @@ where
     transcript.absorb(b"vk", &pk.vk_digest);
     transcript.absorb(b"read_row", &read_row);
     transcript.absorb(b"write_row", &write_row);
-    transcript.absorb(b"gamma", &gamma);
+    transcript.absorb(b"gamma", &fingerprint_gamma);
 
     let init_values: Vec<<G as Group>::Scalar> =
       initial_table.iter().map(|(_, value, _)| *value).collect();
@@ -252,8 +252,8 @@ where
         .unwrap();
 
     // sanity check: claimed_prod_init_row * write_row - claimed_prod_audit_row * read_row = 0
-    let initial_claims = memory_offline_sc_inst.initial_claims();
-    let (claimed_prod_init_row, claimed_prod_audit_row) = (initial_claims[0], initial_claims[1]);
+    let prod_claims = memory_offline_sc_inst.claims.clone();
+    let (claimed_prod_init_row, claimed_prod_audit_row) = (prod_claims[0], prod_claims[1]);
     assert_eq!(claimed_prod_init_row * write_row - read_row * claimed_prod_audit_row, <G as Group>::Scalar::ZERO, "claimed_prod_init_row {:?} * write_row {:?} -  claimed_prod_audit_row {:?} * read_row {:?} = {:?}",
       claimed_prod_init_row,
       write_row,
@@ -263,6 +263,7 @@ where
     );
 
     // generate sumcheck proof
+    let initial_claims = memory_offline_sc_inst.initial_claims();
     let num_claims = initial_claims.len();
     let coeffs = {
       let s = transcript.squeeze(b"r").unwrap();
@@ -311,7 +312,6 @@ where
       e = poly.evaluate(&r_i);
       cubic_polys.push(poly.compress());
     }
-
     let final_claims = memory_offline_sc_inst.final_claims();
 
     let sc_sat = SumcheckProof::<G>::new(cubic_polys);
@@ -379,8 +379,8 @@ where
 
     // take weighted sum (random linear combination) of input, output, and their commitments
     // product is `initial claim`
-    let product: <G as Group>::Scalar = memory_offline_sc_inst
-      .claims
+    let product: <G as Group>::Scalar = prod_claims
+      .to_vec()
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(e, p)| *e * p)
@@ -576,24 +576,13 @@ where
       &eval_joint,
     )?;
 
-    println!(
-      "debug: prove: before going to compress {:?}",
-      memory_offline_sc_inst.comm_output_vec
-    );
-
-    println!("debug: prove: comm_final_value {:?}", comm_final_value,);
-
-    println!(
-      "debug: prove 2: comm_final_value {:?}",
-      Commitment::<G>::decompress(&comm_final_value.compress())?
-    );
     Ok(LookupSNARK {
       comm_final_counter: comm_final_counter.compress(),
       comm_final_value: comm_final_value.compress(),
 
       read_row,
       write_row,
-      gamma,
+      fingerprint_gamma,
 
       comm_output_arr: vec_to_arr(
         memory_offline_sc_inst
@@ -602,7 +591,7 @@ where
           .map(|c| c.compress())
           .collect::<Vec<CompressedCommitment<G>>>(),
       ),
-      claims_product_arr: vec_to_arr(memory_offline_sc_inst.claims.clone()),
+      claims_product_arr: vec_to_arr(prod_claims),
 
       sc_sat,
 
@@ -628,17 +617,13 @@ where
     let mut transcript = G::TE::new(b"LookupSNARK");
     let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
     let comm_final_value = Commitment::<G>::decompress(&self.comm_final_value)?;
-    println!(
-      "debug: verify Commitment::<G>::decompress(comm_final_value) {:?}",
-      Commitment::<G>::decompress(&self.comm_final_value)?
-    );
     let comm_final_counter = Commitment::<G>::decompress(&self.comm_final_counter)?;
 
     // append the verifier key (including commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &vk.digest());
     transcript.absorb(b"read_row", &self.read_row);
     transcript.absorb(b"write_row", &self.write_row);
-    transcript.absorb(b"gamma", &self.gamma);
+    transcript.absorb(b"gamma", &self.fingerprint_gamma);
 
     // add commitment into the challenge
     transcript.absorb(b"e", &[comm_final_value, comm_final_counter].as_slice());
@@ -646,9 +631,9 @@ where
     let num_rounds_sat = vk.N.log_2();
 
     // hash function
-    let gamma_square = self.gamma * self.gamma;
+    let gamma_square = self.fingerprint_gamma * self.fingerprint_gamma;
     let hash_func = |addr: &G::Scalar, val: &G::Scalar, ts: &G::Scalar| -> G::Scalar {
-      self.gamma - (*ts * gamma_square + *val * self.gamma + *addr)
+      self.fingerprint_gamma - (*ts * gamma_square + *val * self.fingerprint_gamma + *addr)
     };
 
     // check claimed_prod_init_row * write_row - claimed_prod_audit_row * read_row = 0
@@ -674,10 +659,6 @@ where
       .collect::<Result<Vec<Commitment<G>>, NovaError>>()?;
 
     transcript.absorb(b"o", &comm_output_vec.as_slice());
-    println!(
-      "debug: verify comm_output_vec {:?}",
-      comm_output_vec.as_slice()
-    );
     transcript.absorb(b"c", &self.claims_product_arr.as_slice());
 
     let num_rounds = vk.N.log_2();
@@ -695,16 +676,10 @@ where
       s_vec
     };
 
-    let initial_claims = self
-      .claims_product_arr
-      .iter()
-      .zip(coeffs.iter())
-      .map(|(e, p)| *e * p)
-      .sum();
     let (claim_mem_sat_final, r_sat) =
       self
         .sc_sat
-        .verify(initial_claims, num_rounds_sat, 3, &mut transcript)?;
+        .verify(G::Scalar::ZERO, num_rounds_sat, 3, &mut transcript)?;
     let rand_eq_bound_r_sat = EqPolynomial::new(rand_eq).evaluate(&r_sat);
     let claim_mem_final_expected: G::Scalar = (0..2)
       .map(|i| {
@@ -715,10 +690,6 @@ where
       .sum();
 
     if claim_mem_final_expected != claim_mem_sat_final {
-      println!(
-        "claim_mem_final_expected {:?} != claim_mem_sat_final {:?}",
-        claim_mem_final_expected, claim_mem_sat_final
-      );
       return Err(NovaError::InvalidSumcheckProof);
     }
 
