@@ -31,7 +31,6 @@ use crate::spartan::ppsnark::vec_to_arr;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 
 use super::ppsnark::{IdentityPolynomial, ProductSumcheckInstance, SumcheckEngine};
 
@@ -83,55 +82,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
 }
 
 impl<G: Group, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKey<G, EE> {}
-
-/// MemoryOfflineSumcheckInstance
-pub struct MemoryOfflineSumcheckInstance<G: Group>(ProductSumcheckInstance<G>);
-
-impl<G: Group> Deref for MemoryOfflineSumcheckInstance<G> {
-  type Target = ProductSumcheckInstance<G>;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl<G: Group> MemoryOfflineSumcheckInstance<G> {
-  /// new a productsumcheck instance
-  pub fn new(
-    ck: &CommitmentKey<G>,
-    input_vec: Vec<Vec<G::Scalar>>, // list of input vectors
-    transcript: &mut G::TE,
-  ) -> Result<Self, NovaError> {
-    let inner = ProductSumcheckInstance::new(ck, input_vec, transcript)?;
-    Ok(MemoryOfflineSumcheckInstance(inner))
-  }
-}
-
-impl<G: Group> SumcheckEngine<G> for MemoryOfflineSumcheckInstance<G> {
-  fn initial_claims(&self) -> Vec<G::Scalar> {
-    vec![G::Scalar::ZERO; 2]
-  }
-
-  fn degree(&self) -> usize {
-    self.0.degree()
-  }
-
-  fn size(&self) -> usize {
-    self.0.size()
-  }
-
-  fn evaluation_points(&self) -> Vec<Vec<G::Scalar>> {
-    self.0.evaluation_points()
-  }
-
-  fn bound(&mut self, r: &G::Scalar) {
-    self.0.bound(r)
-  }
-
-  fn final_claims(&self) -> Vec<Vec<G::Scalar>> {
-    self.0.final_claims()
-  }
-}
 
 #[allow(unused)]
 /// LookupSNARK
@@ -247,12 +197,11 @@ where
     // add commitment into the challenge
     transcript.absorb(b"e", &[comm_final_value, comm_final_counter].as_slice());
 
-    let mut memory_offline_sc_inst =
-      MemoryOfflineSumcheckInstance::<G>::new(ck, vec![initial_row, audit_row], &mut transcript)
-        .unwrap();
+    let mut product_sc_inst =
+      ProductSumcheckInstance::<G>::new(ck, vec![initial_row, audit_row], &mut transcript).unwrap();
 
     // sanity check: claimed_prod_init_row * write_row - claimed_prod_audit_row * read_row = 0
-    let prod_claims = memory_offline_sc_inst.claims.clone();
+    let prod_claims = product_sc_inst.claims.clone();
     let (claimed_prod_init_row, claimed_prod_audit_row) = (prod_claims[0], prod_claims[1]);
     assert_eq!(claimed_prod_init_row * write_row - read_row * claimed_prod_audit_row, <G as Group>::Scalar::ZERO, "claimed_prod_init_row {:?} * write_row {:?} -  claimed_prod_audit_row {:?} * read_row {:?} = {:?}",
       claimed_prod_init_row,
@@ -263,7 +212,7 @@ where
     );
 
     // generate sumcheck proof
-    let initial_claims = memory_offline_sc_inst.initial_claims();
+    let initial_claims = product_sc_inst.initial_claims();
     let num_claims = initial_claims.len();
     let coeffs = {
       let s = transcript.squeeze(b"r").unwrap();
@@ -282,11 +231,11 @@ where
     let mut e = claim;
     let mut r_sat: Vec<G::Scalar> = Vec::new();
     let mut cubic_polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
-    let num_rounds = memory_offline_sc_inst.size().log_2();
+    let num_rounds = product_sc_inst.size().log_2();
 
     for _i in 0..num_rounds {
       let mut evals: Vec<Vec<G::Scalar>> = Vec::new();
-      evals.extend(memory_offline_sc_inst.evaluation_points());
+      evals.extend(product_sc_inst.evaluation_points());
 
       let evals_combined_0 = (0..evals.len()).map(|i| evals[i][0] * coeffs[i]).sum();
       let evals_combined_2 = (0..evals.len()).map(|i| evals[i][1] * coeffs[i]).sum();
@@ -307,12 +256,12 @@ where
       let r_i = transcript.squeeze(b"c").unwrap();
       r_sat.push(r_i);
 
-      memory_offline_sc_inst.bound(&r_i);
+      product_sc_inst.bound(&r_i);
 
       e = poly.evaluate(&r_i);
       cubic_polys.push(poly.compress());
     }
-    let final_claims = memory_offline_sc_inst.final_claims();
+    let final_claims = product_sc_inst.final_claims();
 
     let sc_sat = SumcheckProof::<G>::new(cubic_polys);
 
@@ -347,13 +296,13 @@ where
     };
     let r_prod = rand_ext[1..].to_vec();
 
-    let eval_input_vec = memory_offline_sc_inst
+    let eval_input_vec = product_sc_inst
       .input_vec
       .iter()
       .map(|i| MultilinearPolynomial::evaluate_with(i, &r_prod))
       .collect::<Vec<G::Scalar>>();
 
-    let eval_output2_vec = memory_offline_sc_inst
+    let eval_output2_vec = product_sc_inst
       .output_vec
       .iter()
       .map(|o| MultilinearPolynomial::evaluate_with(o, &r_prod))
@@ -371,7 +320,7 @@ where
     let powers_of_rho = {
       let s = transcript.squeeze(b"r")?;
       let mut s_vec = vec![s];
-      for i in 1..memory_offline_sc_inst.initial_claims().len() {
+      for i in 1..product_sc_inst.initial_claims().len() {
         s_vec.push(s_vec[i - 1] * s);
       }
       s_vec
@@ -392,7 +341,7 @@ where
       .map(|(e, p)| *e * p)
       .sum();
 
-    let comm_output = memory_offline_sc_inst
+    let comm_output = product_sc_inst
       .comm_output_vec
       .iter()
       .zip(powers_of_rho.iter())
@@ -410,7 +359,7 @@ where
       p
     };
 
-    let poly_output = weighted_sum(&memory_offline_sc_inst.output_vec, &powers_of_rho);
+    let poly_output = weighted_sum(&product_sc_inst.output_vec, &powers_of_rho);
 
     let eval_output2: <G as Group>::Scalar = eval_output2_vec
       .iter()
@@ -584,7 +533,7 @@ where
       write_row,
 
       comm_output_arr: vec_to_arr(
-        memory_offline_sc_inst
+        product_sc_inst
           .comm_output_vec
           .iter()
           .map(|c| c.compress())
