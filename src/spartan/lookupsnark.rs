@@ -1,7 +1,9 @@
 //! This module implements LookupSNARK which leverage memory-offline-check skills
 use crate::{
+  constants::NUM_CHALLENGE_BITS,
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
+  gadgets::utils::scalar_as_base,
   spartan::{
     math::Math,
     polys::{
@@ -16,7 +18,7 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
-    Group, TranscriptEngineTrait,
+    Group, ROTrait, TranscriptEngineTrait,
   },
   Commitment, CommitmentKey, CompressedCommitment,
 };
@@ -142,7 +144,6 @@ pub struct LookupSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
 
   read_row: G::Scalar,
   write_row: G::Scalar,
-  fingerprint_gamma: G::Scalar,
 
   comm_output_arr: [CompressedCommitment<G>; 2],
   claims_product_arr: [G::Scalar; 2],
@@ -214,7 +215,6 @@ where
       fingerprint_gamma - (*ts * gamma_square + *val * fingerprint_gamma + *addr)
     };
     // init_row
-    // TODO: initial_table need to be put in setup phase
     let initial_row: Vec<G::Scalar> = initial_table
       .iter()
       .map(|(addr, value, counter)| hash_func(addr, value, counter))
@@ -582,7 +582,6 @@ where
 
       read_row,
       write_row,
-      fingerprint_gamma,
 
       comm_output_arr: vec_to_arr(
         memory_offline_sc_inst
@@ -612,18 +611,86 @@ where
     })
   }
 
+  #[allow(unused)]
+  fn verify_challenge<G2: Group>(
+    comm_final_value: <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
+    comm_final_counter: <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
+    fingerprint_intermediate_gamma: G::Scalar,
+    fingerprint_gamma: G::Scalar,
+  ) -> Result<(), NovaError>
+  where
+    G: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G as Group>::Scalar>,
+  {
+    // verify fingerprint
+    let ro_consts = <<G2 as Group>::RO as ROTrait<
+          <G2 as Group>::Base,
+          <G2 as Group>::Scalar,
+        >>::Constants::default();
+
+    let (
+      (comm_final_value_cordx, comm_final_value_cordy, comm_final_value_infinity),
+      (comm_final_counter_cordx, comm_final_counter_cordy, comm_final_counter_infinity),
+    ) = rayon::join(
+      || comm_final_value.to_coordinates(),
+      || comm_final_counter.to_coordinates(),
+    );
+
+    let mut hasher = <G2 as Group>::RO::new(ro_consts, 7);
+    hasher.absorb(fingerprint_intermediate_gamma);
+    hasher.absorb(scalar_as_base::<G2>(comm_final_value_cordx));
+    hasher.absorb(scalar_as_base::<G2>(comm_final_value_cordy));
+    hasher.absorb(scalar_as_base::<G2>(G2::Scalar::from(u64::from(
+      comm_final_value_infinity,
+    ))));
+    hasher.absorb(scalar_as_base::<G2>(comm_final_counter_cordx));
+    hasher.absorb(scalar_as_base::<G2>(comm_final_counter_cordy));
+    hasher.absorb(scalar_as_base::<G2>(G2::Scalar::from(u64::from(
+      comm_final_counter_infinity,
+    ))));
+
+    let hash_bits = hasher.squeeze(NUM_CHALLENGE_BITS);
+    let computed_gamma = scalar_as_base::<G2>(hash_bits);
+    if fingerprint_gamma != computed_gamma {
+      println!(
+        "fingerprint_gamma {:?} != computed_gamma {:?},,,fingerprint_intermediate_gamma",
+        fingerprint_gamma, computed_gamma
+      );
+      return Err(NovaError::InvalidMultisetProof);
+    }
+    Ok(())
+  }
+
   /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
-  pub fn verify(&self, vk: &VerifierKey<G, EE>) -> Result<(), NovaError> {
-    let mut transcript = G::TE::new(b"LookupSNARK");
-    let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
+  pub fn verify<G2: Group>(
+    &self,
+    vk: &VerifierKey<G, EE>,
+    _fingerprint_intermediate_gamma: G::Scalar,
+    fingerprint_gamma: G::Scalar,
+  ) -> Result<(), NovaError>
+  where
+    G: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G as Group>::Scalar>,
+  {
     let comm_final_value = Commitment::<G>::decompress(&self.comm_final_value)?;
     let comm_final_counter = Commitment::<G>::decompress(&self.comm_final_counter)?;
+
+    // TODO enable verify challenge
+    // Self::verify_challenge::<G2>(
+    //   comm_final_value,
+    //   comm_final_counter,
+    //   fingerprint_intermediate_gamma,
+    //   fingerprint_gamma,
+    // )?;
+
+    let mut transcript = G::TE::new(b"LookupSNARK");
+    let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
 
     // append the verifier key (including commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &vk.digest());
     transcript.absorb(b"read_row", &self.read_row);
     transcript.absorb(b"write_row", &self.write_row);
-    transcript.absorb(b"gamma", &self.fingerprint_gamma);
+    transcript.absorb(b"gamma", &fingerprint_gamma);
 
     // add commitment into the challenge
     transcript.absorb(b"e", &[comm_final_value, comm_final_counter].as_slice());
@@ -631,9 +698,9 @@ where
     let num_rounds_sat = vk.N.log_2();
 
     // hash function
-    let gamma_square = self.fingerprint_gamma * self.fingerprint_gamma;
+    let gamma_square = fingerprint_gamma * fingerprint_gamma;
     let hash_func = |addr: &G::Scalar, val: &G::Scalar, ts: &G::Scalar| -> G::Scalar {
-      self.fingerprint_gamma - (*ts * gamma_square + *val * self.fingerprint_gamma + *addr)
+      fingerprint_gamma - (*ts * gamma_square + *val * fingerprint_gamma + *addr)
     };
 
     // check claimed_prod_init_row * write_row - claimed_prod_audit_row * read_row = 0

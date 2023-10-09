@@ -940,7 +940,6 @@ type CE<G> = <G as Group>::CE;
 #[cfg(test)]
 mod tests {
   use crate::bellpepper::test_shape_cs::TestShapeCS;
-  use crate::constants::NUM_CHALLENGE_BITS;
   use crate::gadgets::lookup::{less_than, Lookup, LookupTrace, LookupTraceBuilder, TableType};
   use crate::gadgets::utils::conditionally_select2;
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
@@ -1730,7 +1729,7 @@ mod tests {
         let max_value_bits = (n - 1).log_2() + 1; // + 1 as a buffer
         let initial_intermediate_gamma = <G1 as Group>::Scalar::from(1);
 
-        let mut lookup = initial_table.clone();
+        let mut lookup = initial_table;
         let num_steps = initial_index;
         let mut intermediate_gamma = initial_intermediate_gamma;
         // simulate folding step lookup io
@@ -1799,49 +1798,9 @@ mod tests {
           <G1 as Group>::Scalar::from(0),
         );
 
-        let ro_consts = <<G2 as Group>::RO as ROTrait<
-          <G2 as Group>::Base,
-          <G2 as Group>::Scalar,
-        >>::Constants::default();
-
-        let final_values: Vec<<G1 as Group>::Scalar> = final_table
-          .get_table()
-          .iter()
-          .map(|(_, value, _)| *value)
-          .collect();
-        let final_counters: Vec<<G1 as Group>::Scalar> = final_table
-          .get_table()
-          .iter()
-          .map(|(_, _, counter)| *counter)
-          .collect();
-
-        // final_value and final_commitment
-        let (
-          (comm_final_value_cordx, comm_final_value_cordy, comm_final_value_infinity),
-          (comm_final_counter_cordx, comm_final_counter_cordy, comm_final_counter_infinity),
-        ) = rayon::join(
-          || G1::CE::commit(ck, &final_values).to_coordinates(),
-          || G1::CE::commit(ck, &final_counters).to_coordinates(),
-        );
-
-        let mut hasher = <G2 as Group>::RO::new(ro_consts, 7);
-        hasher.absorb(intermediate_gamma);
-        hasher.absorb(scalar_as_base::<G2>(comm_final_value_cordx));
-        hasher.absorb(scalar_as_base::<G2>(comm_final_value_cordy));
-        hasher.absorb(scalar_as_base::<G2>(G2::Scalar::from(
-          comm_final_value_infinity as u64,
-        )));
-        hasher.absorb(scalar_as_base::<G2>(comm_final_counter_cordx));
-        hasher.absorb(scalar_as_base::<G2>(comm_final_counter_cordy));
-        hasher.absorb(scalar_as_base::<G2>(G2::Scalar::from(
-          comm_final_counter_infinity as u64,
-        )));
-
-        let hash_bits = hasher.squeeze(NUM_CHALLENGE_BITS);
-        let gamma = scalar_as_base::<G2>(hash_bits);
         vec![
           initial_intermediate_gamma,
-          gamma,
+          LookupTraceBuilder::<G1>::get_challenge::<G2>(ck, final_table, intermediate_gamma),
           init_prev_R,
           init_prev_W,
           init_rw_counter,
@@ -2042,7 +2001,7 @@ mod tests {
       Lookup::new(heap_size * 4, TableType::ReadWrite, initial_table)
     };
 
-    let (circuit_primaries, final_table, intermediate_gamma) =
+    let (circuit_primaries, final_table, expected_intermediate_gamma) =
       HeapifyCircuit::new(&initial_table, ro_consts);
     // let mut circuit_primary = TrivialTestCircuit::default();
     // let z0_primary = vec![<G1 as Group>::Scalar::ZERO; 6];
@@ -2066,7 +2025,7 @@ mod tests {
     );
 
     let z0_primary =
-      HeapifyCircuit::<G1, G2>::get_z0(&pp.ck_primary, &initial_table, intermediate_gamma);
+      HeapifyCircuit::<G1, G2>::get_z0(&pp.ck_primary, &initial_table, expected_intermediate_gamma);
     // println!("num constraints {:?}", pp.num_constraints());
 
     // 5th is initial index.
@@ -2141,9 +2100,14 @@ mod tests {
 
     println!("zn_primary {:?}", zn_primary);
 
+    let intermediate_gamma = zn_primary[0];
     let gamma = zn_primary[1];
     let read_row = zn_primary[2];
     let write_row = zn_primary[3];
+    assert_eq!(
+      expected_intermediate_gamma, intermediate_gamma,
+      "expected_intermediate_gamma != intermediate_gamma"
+    );
 
     // lookup snark prove/verify
     // type EE = crate::provider::ipa_pc::EvaluationEngine<G1>;
@@ -2160,7 +2124,7 @@ mod tests {
     )
     .unwrap();
 
-    let res = snark_proof.verify(&vk);
+    let res = snark_proof.verify::<G2>(&vk, expected_intermediate_gamma, gamma);
     let _ = res.clone().map_err(|err| println!("{:?}", err));
     res.unwrap()
   }
