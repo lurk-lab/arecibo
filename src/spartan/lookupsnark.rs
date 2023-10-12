@@ -150,7 +150,7 @@ where
   pub fn prove(
     ck: &CommitmentKey<G>,
     pk: &ProverKey<G, EE>,
-    fingerprint_gamma: G::Scalar,
+    challenges: (G::Scalar, G::Scalar),
     read_row: G::Scalar,
     write_row: G::Scalar,
     initial_table: Vec<(G::Scalar, G::Scalar, G::Scalar)>,
@@ -159,9 +159,10 @@ where
     // a list of polynomial evaluation claims that will be batched
     let mut w_u_vec = Vec::new();
 
-    let gamma_square = fingerprint_gamma * fingerprint_gamma;
+    let (fingerprint_alpha, fingerprint_gamma) = challenges;
+    let gamma_square: <G as Group>::Scalar = fingerprint_gamma * fingerprint_gamma;
     let hash_func = |addr: &G::Scalar, val: &G::Scalar, ts: &G::Scalar| -> G::Scalar {
-      fingerprint_gamma - (*ts * gamma_square + *val * fingerprint_gamma + *addr)
+      fingerprint_alpha - (*ts * gamma_square + *val * fingerprint_gamma + *addr)
     };
     // init_row
     let initial_row: Vec<G::Scalar> = initial_table
@@ -178,6 +179,7 @@ where
     transcript.absorb(b"vk", &pk.vk_digest);
     transcript.absorb(b"read_row", &read_row);
     transcript.absorb(b"write_row", &write_row);
+    transcript.absorb(b"alpha", &fingerprint_alpha);
     transcript.absorb(b"gamma", &fingerprint_gamma);
 
     let init_values: Vec<<G as Group>::Scalar> =
@@ -561,19 +563,19 @@ where
     comm_final_value: <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
     comm_final_counter: <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
     fingerprint_intermediate_gamma: G::Scalar,
-    fingerprint_gamma: G::Scalar,
+    challenges: (G::Scalar, G::Scalar),
   ) -> Result<(), NovaError>
   where
     G: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G as Group>::Scalar>,
   {
     // verify fingerprint challenge
+    let (fingerprint_alpha, fingerprint_gamma) = challenges;
+
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
 
-    // final_value and final_counter
-
-    let mut hasher = <G as Group>::RO::new(ro_consts, 7);
+    let mut hasher = <G as Group>::RO::new(ro_consts.clone(), 7);
     let fingerprint_intermediate_gamma: G2::Scalar =
       scalar_as_base::<G>(fingerprint_intermediate_gamma);
     hasher.absorb(fingerprint_intermediate_gamma);
@@ -582,8 +584,18 @@ where
     let computed_gamma = hasher.squeeze(NUM_CHALLENGE_BITS);
     if fingerprint_gamma != computed_gamma {
       println!(
-        "fingerprint_gamma {:?} != computed_gamma {:?},,,fingerprint_intermediate_gamma",
+        "fingerprint_gamma {:?} != computed_gamma {:?}",
         fingerprint_gamma, computed_gamma
+      );
+      return Err(NovaError::InvalidMultisetProof);
+    }
+    let mut hasher = <G as Group>::RO::new(ro_consts, 1);
+    hasher.absorb(scalar_as_base::<G>(computed_gamma));
+    let computed_alpha = hasher.squeeze(NUM_CHALLENGE_BITS);
+    if fingerprint_alpha != computed_alpha {
+      println!(
+        "fingerprint_alpha {:?} != computed_alpha {:?}",
+        fingerprint_alpha, computed_alpha
       );
       return Err(NovaError::InvalidMultisetProof);
     }
@@ -595,21 +607,21 @@ where
     &self,
     vk: &VerifierKey<G, EE>,
     fingerprint_intermediate_gamma: G::Scalar,
-    fingerprint_gamma: G::Scalar,
+    challenges: (G::Scalar, G::Scalar),
   ) -> Result<(), NovaError>
   where
     G: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G as Group>::Scalar>,
   {
+    let (fingerprint_alpha, fingerprint_gamma) = challenges;
     let comm_final_value = Commitment::<G>::decompress(&self.comm_final_value)?;
     let comm_final_counter = Commitment::<G>::decompress(&self.comm_final_counter)?;
 
-    // TODO enable verify challenge
     Self::verify_challenge::<G2>(
       comm_final_value,
       comm_final_counter,
       fingerprint_intermediate_gamma,
-      fingerprint_gamma,
+      challenges,
     )?;
 
     let mut transcript = G::TE::new(b"LookupSNARK");
@@ -619,6 +631,7 @@ where
     transcript.absorb(b"vk", &vk.digest());
     transcript.absorb(b"read_row", &self.read_row);
     transcript.absorb(b"write_row", &self.write_row);
+    transcript.absorb(b"alpha", &fingerprint_alpha);
     transcript.absorb(b"gamma", &fingerprint_gamma);
 
     // add commitment into the challenge
@@ -629,7 +642,7 @@ where
     // hash function
     let gamma_square = fingerprint_gamma * fingerprint_gamma;
     let hash_func = |addr: &G::Scalar, val: &G::Scalar, ts: &G::Scalar| -> G::Scalar {
-      fingerprint_gamma - (*ts * gamma_square + *val * fingerprint_gamma + *addr)
+      fingerprint_alpha - (*ts * gamma_square + *val * fingerprint_gamma + *addr)
     };
 
     // check claimed_prod_init_row * write_row - claimed_prod_audit_row * read_row = 0

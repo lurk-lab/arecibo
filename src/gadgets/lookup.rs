@@ -158,7 +158,7 @@ impl<G: Group> LookupTrace<G> {
     mut cs: CS,
     ro_const: ROConstantsCircuit<G2>,
     prev_intermediate_gamma: &AllocatedNum<G::Scalar>,
-    gamma: &AllocatedNum<G::Scalar>,
+    challanges: &(AllocatedNum<G::Scalar>, AllocatedNum<G::Scalar>),
     prev_R: &AllocatedNum<G::Scalar>,
     prev_W: &AllocatedNum<G::Scalar>,
     prev_rw_counter: &AllocatedNum<G::Scalar>,
@@ -189,7 +189,7 @@ impl<G: Group> LookupTrace<G> {
           let (next_R, next_W, next_rw_counter) = self.rw_operation_circuit(
             cs.namespace(|| format!("{}th read ", i)),
             addr,
-            gamma,
+            challanges,
             read_value,
             read_value,
             &prev_R,
@@ -213,7 +213,7 @@ impl<G: Group> LookupTrace<G> {
           let (next_R, next_W, next_rw_counter) = self.rw_operation_circuit(
             cs.namespace(|| format!("{}th write ", i)),
             addr,
-            gamma,
+            challanges,
             read_value,
             write_value,
             &prev_R,
@@ -245,8 +245,7 @@ impl<G: Group> LookupTrace<G> {
     &mut self,
     mut cs: CS,
     addr: &AllocatedNum<F>,
-    // challenges: &(AllocatedNum<G::Base>, AllocatedNum<G::Base>),
-    gamma: &AllocatedNum<F>,
+    challenges: &(AllocatedNum<F>, AllocatedNum<F>),
     read_value: &AllocatedNum<F>,
     write_value: &AllocatedNum<F>,
     prev_R: &AllocatedNum<F>,
@@ -257,27 +256,28 @@ impl<G: Group> LookupTrace<G> {
   where
     F: Ord,
   {
+    let (alpha, gamma) = challenges;
     // update R
     let gamma_square = gamma.mul(cs.namespace(|| "gamme^2"), gamma)?;
     // read_value_term = gamma * value
     let read_value_term = gamma.mul(cs.namespace(|| "read_value_term"), read_value)?;
     // counter_term = gamma^2 * counter
     let read_counter_term = gamma_square.mul(cs.namespace(|| "read_counter_term"), read_counter)?;
-    // new_R = R * (gamma - (addr + gamma * value + gamma^2 * counter))
+    // new_R = R * (alpha - (addr + gamma * value + gamma^2 * counter))
     let new_R = AllocatedNum::alloc(cs.namespace(|| "new_R"), || {
       prev_R
         .get_value()
-        .zip(gamma.get_value())
+        .zip(alpha.get_value())
         .zip(addr.get_value())
         .zip(read_value_term.get_value())
         .zip(read_counter_term.get_value())
-        .map(|((((R, gamma), addr), value_term), counter_term)| {
-          R * (gamma - (addr + value_term + counter_term))
+        .map(|((((R, alpha), addr), value_term), counter_term)| {
+          R * (alpha - (addr + value_term + counter_term))
         })
         .ok_or(SynthesisError::AssignmentMissing)
     })?;
     let mut r_blc = LinearCombination::<F>::zero();
-    r_blc = r_blc + gamma.get_variable()
+    r_blc = r_blc + alpha.get_variable()
       - addr.get_variable()
       - read_value_term.get_variable()
       - read_counter_term.get_variable();
@@ -324,21 +324,21 @@ impl<G: Group> LookupTrace<G> {
     let new_W = AllocatedNum::alloc(cs.namespace(|| "new_W"), || {
       prev_W
         .get_value()
-        .zip(gamma.get_value())
+        .zip(alpha.get_value())
         .zip(addr.get_value())
         .zip(write_value_term.get_value())
         .zip(write_counter_term.get_value())
         .zip(gamma_square.get_value())
         .map(
-          |(((((W, gamma), addr), value_term), write_counter_term), gamma_square)| {
-            W * (gamma - (addr + value_term + write_counter_term + gamma_square))
+          |(((((W, alpha), addr), value_term), write_counter_term), gamma_square)| {
+            W * (alpha - (addr + value_term + write_counter_term + gamma_square))
           },
         )
         .ok_or(SynthesisError::AssignmentMissing)
     })?;
-    // new_W = W * (gamma - (addr + gamma * value + gamma^2 * counter + gamma^2)))
+    // new_W = W * (alpha - (addr + gamma * value + gamma^2 * counter + gamma^2)))
     let mut w_blc = LinearCombination::<F>::zero();
-    w_blc = w_blc + gamma.get_variable()
+    w_blc = w_blc + alpha.get_variable()
       - addr.get_variable()
       - write_value_term.get_variable()
       - write_counter_term.get_variable()
@@ -471,7 +471,7 @@ impl<'a, G: Group> LookupTraceBuilder<'a, G> {
     ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
     final_table: &Lookup<G::Scalar>,
     intermediate_gamma: G::Scalar,
-  ) -> G::Scalar
+  ) -> (G::Scalar, G::Scalar)
   where
     G: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G as Group>::Scalar>,
@@ -495,12 +495,19 @@ impl<'a, G: Group> LookupTraceBuilder<'a, G> {
       || G::CE::commit(ck, &final_counters),
     );
 
-    let mut hasher = <G as Group>::RO::new(ro_consts, 7);
+    // gamma
+    let mut hasher = <G as Group>::RO::new(ro_consts.clone(), 7);
     let intermediate_gamma: G2::Scalar = scalar_as_base::<G>(intermediate_gamma);
     hasher.absorb(intermediate_gamma);
     comm_final_value.absorb_in_ro(&mut hasher);
     comm_final_counter.absorb_in_ro(&mut hasher);
-    hasher.squeeze(NUM_CHALLENGE_BITS)
+    let gamma = hasher.squeeze(NUM_CHALLENGE_BITS);
+
+    // alpha
+    let mut hasher = <G as Group>::RO::new(ro_consts, 1);
+    hasher.absorb(scalar_as_base::<G>(gamma));
+    let alpha = hasher.squeeze(NUM_CHALLENGE_BITS);
+    (alpha, gamma)
   }
 }
 
@@ -734,10 +741,17 @@ mod test {
     ];
     let mut lookup = Lookup::<<G1 as Group>::Scalar>::new(1024, TableType::ReadOnly, initial_table);
     let mut lookup_trace_builder = LookupTraceBuilder::<G1>::new(&mut lookup);
-    let gamma = AllocatedNum::alloc(cs.namespace(|| "gamma"), || {
-      Ok(<G1 as Group>::Scalar::from(2))
-    })
-    .unwrap();
+    let challenges = (
+      AllocatedNum::alloc(cs.namespace(|| "alpha"), || {
+        Ok(<G1 as Group>::Scalar::from(5))
+      })
+      .unwrap(),
+      AllocatedNum::alloc(cs.namespace(|| "gamma"), || {
+        Ok(<G1 as Group>::Scalar::from(7))
+      })
+      .unwrap(),
+    );
+    let (alpha, gamma) = &challenges;
     let zero = alloc_zero(cs.namespace(|| "zero")).unwrap();
     let one = alloc_one(cs.namespace(|| "one")).unwrap();
     let prev_intermediate_gamma = &one;
@@ -774,7 +788,7 @@ mod test {
         cs.namespace(|| "commit"),
         ro_consts.clone(),
         prev_intermediate_gamma,
-        &gamma,
+        &challenges,
         prev_W,
         prev_R,
         prev_rw_counter,
@@ -789,25 +803,27 @@ mod test {
       next_R.get_value(),
       prev_R
         .get_value()
+        .zip(alpha.get_value())
         .zip(gamma.get_value())
         .zip(addr.get_value())
         .zip(read_value.get_value())
-        .map(|(((prev_R, gamma), addr), read_value)| prev_R
-          * (gamma - (addr + gamma * read_value + gamma * gamma * <G1 as Group>::Scalar::ZERO))
-          * (gamma - (addr + gamma * read_value + gamma * gamma * <G1 as Group>::Scalar::ONE)))
+        .map(|((((prev_R, alpha), gamma), addr), read_value)| prev_R
+          * (alpha - (addr + gamma * read_value + gamma * gamma * <G1 as Group>::Scalar::ZERO))
+          * (alpha - (addr + gamma * read_value + gamma * gamma * <G1 as Group>::Scalar::ONE)))
     );
     // next_W check
     assert_eq!(
       next_W.get_value(),
       prev_W
         .get_value()
+        .zip(alpha.get_value())
         .zip(gamma.get_value())
         .zip(addr.get_value())
         .zip(read_value.get_value())
-        .map(|(((prev_W, gamma), addr), read_value)| {
+        .map(|((((prev_W, alpha), gamma), addr), read_value)| {
           prev_W
-            * (gamma - (addr + gamma * read_value + gamma * gamma * (<G1 as Group>::Scalar::ONE)))
-            * (gamma
+            * (alpha - (addr + gamma * read_value + gamma * gamma * (<G1 as Group>::Scalar::ONE)))
+            * (alpha
               - (addr + gamma * read_value + gamma * gamma * (<G1 as Group>::Scalar::from(2))))
         }),
     );
@@ -825,12 +841,6 @@ mod test {
       scalar_as_base::<G2>(res),
       next_intermediate_gamma.get_value().unwrap()
     );
-    // TODO check rics is_sat
-    // let (_, _) = cs.r1cs_shape_with_commitmentkey();
-    // let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
-
-    // // Make sure that the first instance is satisfiable
-    // assert!(shape.is_sat(&ck, &U1, &W1).is_ok());
   }
 
   #[test]
@@ -849,10 +859,17 @@ mod test {
     let mut lookup =
       Lookup::<<G1 as Group>::Scalar>::new(1024, TableType::ReadWrite, initial_table);
     let mut lookup_trace_builder = LookupTraceBuilder::<G1>::new(&mut lookup);
-    let gamma = AllocatedNum::alloc(cs.namespace(|| "gamma"), || {
-      Ok(<G1 as Group>::Scalar::from(2))
-    })
-    .unwrap();
+    let challenges = (
+      AllocatedNum::alloc(cs.namespace(|| "alpha"), || {
+        Ok(<G1 as Group>::Scalar::from(5))
+      })
+      .unwrap(),
+      AllocatedNum::alloc(cs.namespace(|| "gamma"), || {
+        Ok(<G1 as Group>::Scalar::from(7))
+      })
+      .unwrap(),
+    );
+    let (alpha, gamma) = &challenges;
     let zero = alloc_zero(cs.namespace(|| "zero")).unwrap();
     let one = alloc_one(cs.namespace(|| "one")).unwrap();
     let prev_intermediate_gamma = &one;
@@ -890,7 +907,7 @@ mod test {
         cs.namespace(|| "commit"),
         ro_consts.clone(),
         prev_intermediate_gamma,
-        &gamma,
+        &challenges,
         prev_W,
         prev_R,
         prev_rw_counter,
@@ -905,28 +922,30 @@ mod test {
       next_R.get_value(),
       prev_R
         .get_value()
+        .zip(alpha.get_value())
         .zip(gamma.get_value())
         .zip(addr.get_value())
         .zip(read_value.get_value())
-        .map(|(((prev_R, gamma), addr), read_value)| prev_R
-          * (gamma
+        .map(|((((prev_R, alpha), gamma), addr), read_value)| prev_R
+          * (alpha
             - (addr
               + gamma * <G1 as Group>::Scalar::ZERO
               + gamma * gamma * <G1 as Group>::Scalar::ZERO))
-          * (gamma - (addr + gamma * read_value + gamma * gamma * <G1 as Group>::Scalar::ONE)))
+          * (alpha - (addr + gamma * read_value + gamma * gamma * <G1 as Group>::Scalar::ONE)))
     );
     // next_W check
     assert_eq!(
       next_W.get_value(),
       prev_W
         .get_value()
+        .zip(alpha.get_value())
         .zip(gamma.get_value())
         .zip(addr.get_value())
         .zip(read_value.get_value())
-        .map(|(((prev_W, gamma), addr), read_value)| {
+        .map(|((((prev_W, alpha), gamma), addr), read_value)| {
           prev_W
-            * (gamma - (addr + gamma * read_value + gamma * gamma * (<G1 as Group>::Scalar::ONE)))
-            * (gamma
+            * (alpha - (addr + gamma * read_value + gamma * gamma * (<G1 as Group>::Scalar::ONE)))
+            * (alpha
               - (addr + gamma * read_value + gamma * gamma * (<G1 as Group>::Scalar::from(2))))
         }),
     );

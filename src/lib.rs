@@ -1799,9 +1799,12 @@ mod tests {
           <G1 as Group>::Scalar::from(0),
         );
 
+        let (alpha, gamma) =
+          LookupTraceBuilder::<G1>::get_challenge::<G2>(ck, final_table, intermediate_gamma);
         vec![
           initial_intermediate_gamma,
-          LookupTraceBuilder::<G1>::get_challenge::<G2>(ck, final_table, intermediate_gamma),
+          alpha,
+          gamma,
           init_prev_R,
           init_prev_W,
           init_rw_counter,
@@ -1818,7 +1821,7 @@ mod tests {
       G2: Group<Base = <G1 as Group>::Scalar>,
     {
       fn arity(&self) -> usize {
-        6
+        7
       }
 
       fn synthesize<CS: ConstraintSystem<F>>(
@@ -1828,11 +1831,12 @@ mod tests {
       ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
         let mut lookup_trace = self.lookup_trace.clone();
         let prev_intermediate_gamma = &z[0];
-        let gamma = &z[1];
-        let prev_R = &z[2];
-        let prev_W = &z[3];
-        let prev_rw_counter = &z[4];
-        let index = &z[5];
+        let alpha = &z[1];
+        let gamma = &z[2];
+        let prev_R = &z[3];
+        let prev_W = &z[4];
+        let prev_rw_counter = &z[5];
+        let index = &z[6];
 
         let left_child_index = AllocatedNum::alloc(cs.namespace(|| "left_child_index"), || {
           index
@@ -1930,7 +1934,7 @@ mod tests {
             cs.namespace(|| "commit"),
             self.ro_consts.clone(),
             prev_intermediate_gamma,
-            gamma,
+            &(alpha.clone(), gamma.clone()),
             prev_W,
             prev_R,
             prev_rw_counter,
@@ -1950,6 +1954,7 @@ mod tests {
         );
         Ok(vec![
           next_intermediate_gamma,
+          alpha.clone(),
           gamma.clone(),
           next_R,
           next_W,
@@ -2071,25 +2076,26 @@ mod tests {
     assert!(res.is_ok());
     let (zn_primary, _) = res.unwrap();
 
-    assert_eq!(<G1 as Group>::Scalar::from(1).neg(), zn_primary[5]);
+    assert_eq!(<G1 as Group>::Scalar::from(1).neg(), zn_primary[6]);
 
     let number_of_iterated_nodes = (heap_size - 4) / 2 + 1;
     assert_eq!(
       <G1 as Group>::Scalar::from((number_of_iterated_nodes * 7) as u64),
-      zn_primary[4]
+      zn_primary[5]
     ); // rw counter = number_of_iterated_nodes * (3r + 4w) operations
 
-    assert_eq!(pp.circuit_shape_primary.r1cs_shape.num_cons, 12598);
-    assert_eq!(pp.circuit_shape_primary.r1cs_shape.num_vars, 12604);
+    assert_eq!(pp.circuit_shape_primary.r1cs_shape.num_cons, 12599);
+    assert_eq!(pp.circuit_shape_primary.r1cs_shape.num_vars, 12607);
     assert_eq!(pp.circuit_shape_secondary.r1cs_shape.num_cons, 10347);
     assert_eq!(pp.circuit_shape_secondary.r1cs_shape.num_vars, 10329);
 
     println!("zn_primary {:?}", zn_primary);
 
     let intermediate_gamma = zn_primary[0];
-    let gamma = zn_primary[1];
-    let read_row = zn_primary[2];
-    let write_row = zn_primary[3];
+    let alpha = zn_primary[1];
+    let gamma = zn_primary[2];
+    let read_row = zn_primary[3];
+    let write_row = zn_primary[4];
     assert_eq!(
       expected_intermediate_gamma, intermediate_gamma,
       "expected_intermediate_gamma != intermediate_gamma"
@@ -2102,7 +2108,7 @@ mod tests {
     let snark_proof = LookupSNARK::<G1, EE<_>>::prove(
       &pp.ck_primary,
       &pk,
-      gamma,
+      (alpha, gamma),
       read_row,
       write_row,
       initial_table.get_table(),
@@ -2110,7 +2116,7 @@ mod tests {
     )
     .unwrap();
 
-    let res = snark_proof.verify::<G2>(&vk, expected_intermediate_gamma, gamma);
+    let res = snark_proof.verify::<G2>(&vk, expected_intermediate_gamma, (alpha, gamma));
     let _ = res.clone().map_err(|err| println!("{:?}", err));
     res.unwrap()
   }
