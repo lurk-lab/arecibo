@@ -11,7 +11,7 @@ use crate::gadgets::nonnative::util::Num;
 use crate::gadgets::utils::alloc_const;
 use crate::spartan::math::Math;
 use crate::traits::commitment::CommitmentEngineTrait;
-use crate::traits::commitment::CommitmentTrait;
+use crate::traits::AbsorbInROTrait;
 use crate::traits::ROCircuitTrait;
 use crate::traits::ROConstants;
 use crate::traits::ROTrait;
@@ -476,10 +476,8 @@ impl<'a, G: Group> LookupTraceBuilder<'a, G> {
     G: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G as Group>::Scalar>,
   {
-    let ro_consts = <<G2 as Group>::RO as ROTrait<
-          <G2 as Group>::Base,
-          <G2 as Group>::Scalar,
-        >>::Constants::default();
+    let ro_consts =
+      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
     let final_values: Vec<<G as Group>::Scalar> = final_table
       .get_table()
       .iter()
@@ -491,30 +489,18 @@ impl<'a, G: Group> LookupTraceBuilder<'a, G> {
       .map(|(_, _, counter)| *counter)
       .collect();
 
-    // final_value and final_commitment
-    let (
-      (comm_final_value_cordx, comm_final_value_cordy, comm_final_value_infinity),
-      (comm_final_counter_cordx, comm_final_counter_cordy, comm_final_counter_infinity),
-    ) = rayon::join(
-      || G::CE::commit(ck, &final_values).to_coordinates(),
-      || G::CE::commit(ck, &final_counters).to_coordinates(),
+    // final_value and final_counter
+    let (comm_final_value, comm_final_counter) = rayon::join(
+      || G::CE::commit(ck, &final_values),
+      || G::CE::commit(ck, &final_counters),
     );
 
-    let mut hasher = <G2 as Group>::RO::new(ro_consts, 7);
+    let mut hasher = <G as Group>::RO::new(ro_consts, 7);
+    let intermediate_gamma: G2::Scalar = scalar_as_base::<G>(intermediate_gamma);
     hasher.absorb(intermediate_gamma);
-    hasher.absorb(scalar_as_base::<G2>(comm_final_value_cordx));
-    hasher.absorb(scalar_as_base::<G2>(comm_final_value_cordy));
-    hasher.absorb(scalar_as_base::<G2>(G2::Scalar::from(u64::from(
-      comm_final_value_infinity,
-    ))));
-    hasher.absorb(scalar_as_base::<G2>(comm_final_counter_cordx));
-    hasher.absorb(scalar_as_base::<G2>(comm_final_counter_cordy));
-    hasher.absorb(scalar_as_base::<G2>(G2::Scalar::from(u64::from(
-      comm_final_counter_infinity,
-    ))));
-
-    let hash_bits = hasher.squeeze(NUM_CHALLENGE_BITS);
-    scalar_as_base::<G2>(hash_bits)
+    comm_final_value.absorb_in_ro(&mut hasher);
+    comm_final_counter.absorb_in_ro(&mut hasher);
+    hasher.squeeze(NUM_CHALLENGE_BITS)
   }
 }
 

@@ -1756,6 +1756,7 @@ mod tests {
             G1::Scalar::from(2) * addr + G1::Scalar::from(1),
             new_left_child,
           );
+          // swap right pair
           let (new_parent_right, new_right_child) = if right_child < new_parent_left {
             (right_child, new_parent_left)
           } else {
@@ -2003,11 +2004,8 @@ mod tests {
 
     let (circuit_primaries, final_table, expected_intermediate_gamma) =
       HeapifyCircuit::new(&initial_table, ro_consts);
-    // let mut circuit_primary = TrivialTestCircuit::default();
-    // let z0_primary = vec![<G1 as Group>::Scalar::ZERO; 6];
 
     let circuit_secondary = TrivialTestCircuit::default();
-    // let mut circuit_primary = TrivialTestCircuit::default();
 
     // produce public parameters
     let pp_hint1 = Some(SPrime::<G1, EE<_>>::commitment_key_floor());
@@ -2025,8 +2023,7 @@ mod tests {
     );
 
     let z0_primary =
-      HeapifyCircuit::<G1, G2>::get_z0(&pp.ck_primary, &initial_table, expected_intermediate_gamma);
-    // println!("num constraints {:?}", pp.num_constraints());
+      HeapifyCircuit::<G1, G2>::get_z0(&pp.ck_primary, &final_table, expected_intermediate_gamma);
 
     // 5th is initial index.
     // +1 for index end with 0
@@ -2072,20 +2069,9 @@ mod tests {
       })
       .unwrap();
     assert!(res.is_ok());
-    /*
-       let next_gamma = &z[0];
-       let gamma = &z[1];
-       let next_R = &z[2];
-       let next_W = &z[3];
-       let next_rw_counter = &z[4];
-       let next_index = &z[5];
-    */
     let (zn_primary, _) = res.unwrap();
 
-    // TODO move below check to LookupSNARK
-    // assert_eq!(zn_primary[0], zn_primary[1]); // challenge == pre_compute_challenge
-
-    assert_eq!(<G1 as Group>::Scalar::from(1).neg(), zn_primary[5]); // last index == -1
+    assert_eq!(<G1 as Group>::Scalar::from(1).neg(), zn_primary[5]);
 
     let number_of_iterated_nodes = (heap_size - 4) / 2 + 1;
     assert_eq!(

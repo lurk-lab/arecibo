@@ -18,7 +18,7 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
-    Group, ROTrait, TranscriptEngineTrait,
+    AbsorbInROTrait, Group, ROTrait, TranscriptEngineTrait,
   },
   Commitment, CommitmentKey, CompressedCommitment,
 };
@@ -83,7 +83,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
 
 impl<G: Group, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKey<G, EE> {}
 
-#[allow(unused)]
 /// LookupSNARK
 pub struct LookupSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
   a: PhantomData<(G, EE)>,
@@ -187,8 +186,6 @@ where
       final_table.iter().map(|(_, value, _)| *value).collect();
     let final_counters: Vec<<G as Group>::Scalar> =
       final_table.iter().map(|(_, _, counter)| *counter).collect();
-    // TODO add comm_final_value, comm_final_counter to gamma challange
-    // which means we need to move final_values, final_counters commitment at earlier
     let comm_init_value = pk.comm_init_value;
     let (comm_final_value, comm_final_counter) = rayon::join(
       || G::CE::commit(ck, &final_values),
@@ -560,7 +557,6 @@ where
     })
   }
 
-  #[allow(unused)]
   fn verify_challenge<G2: Group>(
     comm_final_value: <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
     comm_final_counter: <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
@@ -571,35 +567,19 @@ where
     G: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G as Group>::Scalar>,
   {
-    // verify fingerprint
-    let ro_consts = <<G2 as Group>::RO as ROTrait<
-          <G2 as Group>::Base,
-          <G2 as Group>::Scalar,
-        >>::Constants::default();
+    // verify fingerprint challenge
+    let ro_consts =
+      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
 
-    let (
-      (comm_final_value_cordx, comm_final_value_cordy, comm_final_value_infinity),
-      (comm_final_counter_cordx, comm_final_counter_cordy, comm_final_counter_infinity),
-    ) = rayon::join(
-      || comm_final_value.to_coordinates(),
-      || comm_final_counter.to_coordinates(),
-    );
+    // final_value and final_counter
 
-    let mut hasher = <G2 as Group>::RO::new(ro_consts, 7);
+    let mut hasher = <G as Group>::RO::new(ro_consts, 7);
+    let fingerprint_intermediate_gamma: G2::Scalar =
+      scalar_as_base::<G>(fingerprint_intermediate_gamma);
     hasher.absorb(fingerprint_intermediate_gamma);
-    hasher.absorb(scalar_as_base::<G2>(comm_final_value_cordx));
-    hasher.absorb(scalar_as_base::<G2>(comm_final_value_cordy));
-    hasher.absorb(scalar_as_base::<G2>(G2::Scalar::from(u64::from(
-      comm_final_value_infinity,
-    ))));
-    hasher.absorb(scalar_as_base::<G2>(comm_final_counter_cordx));
-    hasher.absorb(scalar_as_base::<G2>(comm_final_counter_cordy));
-    hasher.absorb(scalar_as_base::<G2>(G2::Scalar::from(u64::from(
-      comm_final_counter_infinity,
-    ))));
-
-    let hash_bits = hasher.squeeze(NUM_CHALLENGE_BITS);
-    let computed_gamma = scalar_as_base::<G2>(hash_bits);
+    comm_final_value.absorb_in_ro(&mut hasher);
+    comm_final_counter.absorb_in_ro(&mut hasher);
+    let computed_gamma = hasher.squeeze(NUM_CHALLENGE_BITS);
     if fingerprint_gamma != computed_gamma {
       println!(
         "fingerprint_gamma {:?} != computed_gamma {:?},,,fingerprint_intermediate_gamma",
@@ -614,7 +594,7 @@ where
   pub fn verify<G2: Group>(
     &self,
     vk: &VerifierKey<G, EE>,
-    _fingerprint_intermediate_gamma: G::Scalar,
+    fingerprint_intermediate_gamma: G::Scalar,
     fingerprint_gamma: G::Scalar,
   ) -> Result<(), NovaError>
   where
@@ -625,12 +605,12 @@ where
     let comm_final_counter = Commitment::<G>::decompress(&self.comm_final_counter)?;
 
     // TODO enable verify challenge
-    // Self::verify_challenge::<G2>(
-    //   comm_final_value,
-    //   comm_final_counter,
-    //   fingerprint_intermediate_gamma,
-    //   fingerprint_gamma,
-    // )?;
+    Self::verify_challenge::<G2>(
+      comm_final_value,
+      comm_final_counter,
+      fingerprint_intermediate_gamma,
+      fingerprint_gamma,
+    )?;
 
     let mut transcript = G::TE::new(b"LookupSNARK");
     let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
