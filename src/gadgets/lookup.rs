@@ -64,35 +64,37 @@ impl<G: Group> LookupTrace<G> {
       self.cursor,
       self.expected_rw_trace.len()
     );
-    if let RWTrace::Read(expected_addr, expected_read_value, expected_read_counter) =
-      self.expected_rw_trace[self.cursor]
-    {
-      if let Some(key) = addr.get_value() {
-        assert!(
-          key == expected_addr,
-          "read address {:?} mismatch with expected {:?}",
-          key,
-          expected_addr
-        );
-      }
-      let read_value =
-        AllocatedNum::alloc(cs.namespace(|| "read_value"), || Ok(expected_read_value))?;
-      let read_counter = AllocatedNum::alloc(cs.namespace(|| "read_counter"), || {
-        Ok(expected_read_counter)
-      })?;
-      self
-        .rw_trace_allocated_num
-        .push(RWTrace::Read::<AllocatedNum<G::Scalar>>(
-          addr.clone(),
-          read_value.clone(),
-          read_counter,
-        )); // append read trace
+    let read_value =
+      if let RWTrace::Read(expected_addr, expected_read_value, expected_read_counter) =
+        self.expected_rw_trace[self.cursor]
+      {
+        if let Some(key) = addr.get_value() {
+          assert!(
+            key == expected_addr,
+            "read address {:?} mismatch with expected {:?}",
+            key,
+            expected_addr
+          );
+        }
+        let read_value =
+          AllocatedNum::alloc(cs.namespace(|| "read_value"), || Ok(expected_read_value))?;
+        let read_counter = AllocatedNum::alloc(cs.namespace(|| "read_counter"), || {
+          Ok(expected_read_counter)
+        })?;
+        self
+          .rw_trace_allocated_num
+          .push(RWTrace::Read::<AllocatedNum<G::Scalar>>(
+            addr.clone(),
+            read_value.clone(),
+            read_counter,
+          )); // append read trace
 
-      self.cursor += 1;
-      Ok(read_value)
-    } else {
-      Err(SynthesisError::AssignmentMissing)
-    }
+        self.cursor += 1;
+        Ok(read_value)
+      } else {
+        Err(SynthesisError::AssignmentMissing)
+      };
+    read_value
   }
 
   /// write value to lookup table
@@ -111,7 +113,7 @@ impl<G: Group> LookupTrace<G> {
       self.cursor,
       self.expected_rw_trace.len()
     );
-    if let RWTrace::Write(
+    let result = if let RWTrace::Write(
       expected_addr,
       expected_read_value,
       expected_write_value,
@@ -147,7 +149,8 @@ impl<G: Group> LookupTrace<G> {
       Ok(())
     } else {
       Err(SynthesisError::AssignmentMissing)
-    }
+    };
+    result
   }
 
   /// commit rw_trace to lookup
