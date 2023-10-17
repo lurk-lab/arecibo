@@ -2090,7 +2090,13 @@ mod tests {
     )
     .unwrap();
 
-    let res = snark_proof.verify::<G2>(&vk, expected_intermediate_gamma, (alpha, gamma));
+    let res = snark_proof.verify::<G2>(
+      &vk,
+      expected_intermediate_gamma,
+      read_row,
+      write_row,
+      (alpha, gamma),
+    );
     let _ = res.clone().map_err(|err| println!("{:?}", err));
     res.unwrap()
   }

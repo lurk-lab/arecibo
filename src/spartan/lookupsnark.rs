@@ -91,9 +91,6 @@ pub struct LookupSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
   comm_final_counter: CompressedCommitment<G>,
   comm_final_value: CompressedCommitment<G>,
 
-  read_row: G::Scalar,
-  write_row: G::Scalar,
-
   comm_output_arr: [CompressedCommitment<G>; 2],
   claims_product_arr: [G::Scalar; 2],
 
@@ -528,9 +525,6 @@ where
       comm_final_counter: comm_final_counter.compress(),
       comm_final_value: comm_final_value.compress(),
 
-      read_row,
-      write_row,
-
       comm_output_arr: vec_to_arr(
         product_sc_inst
           .comm_output_vec
@@ -599,6 +593,8 @@ where
     &self,
     vk: &VerifierKey<G, EE>,
     fingerprint_intermediate_gamma: G::Scalar,
+    read_row: G::Scalar,
+    write_row: G::Scalar,
     challenges: (G::Scalar, G::Scalar),
   ) -> Result<(), NovaError>
   where
@@ -621,8 +617,8 @@ where
 
     // append the verifier key (including commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &vk.digest());
-    transcript.absorb(b"read_row", &self.read_row);
-    transcript.absorb(b"write_row", &self.write_row);
+    transcript.absorb(b"read_row", &read_row);
+    transcript.absorb(b"write_row", &write_row);
     transcript.absorb(b"alpha", &fingerprint_alpha);
     transcript.absorb(b"gamma", &fingerprint_gamma);
 
@@ -640,14 +636,14 @@ where
     // check claimed_prod_init_row * write_row - claimed_prod_audit_row * read_row = 0
     // sanity check: any of them might not be 0
     assert!(
-      self.claims_product_arr[0] * self.write_row * self.claims_product_arr[1] * self.read_row
+      self.claims_product_arr[0] * write_row * self.claims_product_arr[1] * read_row
         != G::Scalar::ZERO,
       "any of claims_product_arr {:?}, write_row {:?}, read_row {:?} = 0",
       self.claims_product_arr,
-      self.write_row,
-      self.read_row
+      write_row,
+      read_row
     );
-    if self.claims_product_arr[0] * self.write_row - self.claims_product_arr[1] * self.read_row
+    if self.claims_product_arr[0] * write_row - self.claims_product_arr[1] * read_row
       != G::Scalar::ZERO
     {
       return Err(NovaError::InvalidMultisetProof);
