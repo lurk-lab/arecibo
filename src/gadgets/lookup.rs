@@ -509,8 +509,6 @@ impl<'a, G: Group> LookupTraceBuilder<'a, G> {
 #[derive(Clone, Debug)]
 pub struct Lookup<F: PrimeField> {
   pub(crate) map_aux: BTreeMap<F, (F, F)>, // (value, counter)
-  /// map_aux_dirty only include the modified fields of `map_aux`, thats why called dirty
-  map_aux_dirty: BTreeMap<F, (F, F)>, // (value, counter)
   rw_counter: F,
   pub(crate) table_type: TableType, // read only or read-write
   pub(crate) max_cap_rwcounter_log2: usize, // max cap for rw_counter operation in bits
@@ -532,7 +530,6 @@ impl<F: PrimeField> Lookup<F> {
         .into_iter()
         .map(|(addr, value)| (addr, (value, F::ZERO)))
         .collect(),
-      map_aux_dirty: BTreeMap::new(),
       rw_counter: F::ZERO,
       table_type,
       max_cap_rwcounter_log2,
@@ -577,9 +574,6 @@ impl<F: PrimeField> Lookup<F> {
       } + F::ONE,
     );
     self.map_aux.insert(addr, (write_value, write_counter));
-    self
-      .map_aux_dirty
-      .insert(addr, (write_value, write_counter));
     self.rw_counter = write_counter;
     (read_value, read_counter)
   }
