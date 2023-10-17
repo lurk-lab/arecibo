@@ -588,9 +588,10 @@ pub fn add_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
   b: &AllocatedNum<F>,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let c = AllocatedNum::alloc(cs.namespace(|| "c"), || {
-    let mut tmp = a.get_value().ok_or(SynthesisError::AssignmentMissing)?;
-    tmp.add_assign(&b.get_value().ok_or(SynthesisError::AssignmentMissing)?);
-    Ok(tmp)
+    a.get_value()
+      .zip(b.get_value())
+      .map(|(a, b)| a + b)
+      .ok_or(SynthesisError::AssignmentMissing)
   })?;
   cs.enforce(
     || "c = a+b",
