@@ -2,7 +2,6 @@
 use std::cmp::max;
 use std::collections::BTreeMap;
 
-use bellpepper::gadgets::Assignment;
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError};
 use std::cmp::Ord;
 
@@ -158,7 +157,7 @@ impl<G: Group> LookupTrace<G> {
     mut cs: CS,
     ro_const: ROConstantsCircuit<G2>,
     prev_intermediate_gamma: &AllocatedNum<G::Scalar>,
-    challanges: &(AllocatedNum<G::Scalar>, AllocatedNum<G::Scalar>),
+    challenges: &(AllocatedNum<G::Scalar>, AllocatedNum<G::Scalar>),
     prev_R: &AllocatedNum<G::Scalar>,
     prev_W: &AllocatedNum<G::Scalar>,
     prev_rw_counter: &AllocatedNum<G::Scalar>,
@@ -181,7 +180,7 @@ impl<G: Group> LookupTrace<G> {
       1 + 3 * self.expected_rw_trace.len(), // prev_challenge + [(address, value, counter)]
     );
     ro.absorb(prev_intermediate_gamma);
-    let rw_trace_allocated_num = self.rw_trace_allocated_num.clone();
+    let rw_trace_allocated_num = &self.rw_trace_allocated_num;
     let (next_R, next_W, next_rw_counter) = rw_trace_allocated_num.iter().enumerate().try_fold(
       (prev_R.clone(), prev_W.clone(), prev_rw_counter.clone()),
       |(prev_R, prev_W, prev_rw_counter), (i, rwtrace)| match rwtrace {
@@ -189,7 +188,7 @@ impl<G: Group> LookupTrace<G> {
           let (next_R, next_W, next_rw_counter) = self.rw_operation_circuit(
             cs.namespace(|| format!("{}th read ", i)),
             addr,
-            challanges,
+            challenges,
             read_value,
             read_value,
             &prev_R,
@@ -213,7 +212,7 @@ impl<G: Group> LookupTrace<G> {
           let (next_R, next_W, next_rw_counter) = self.rw_operation_circuit(
             cs.namespace(|| format!("{}th write ", i)),
             addr,
-            challanges,
+            challenges,
             read_value,
             write_value,
             &prev_R,
@@ -242,7 +241,7 @@ impl<G: Group> LookupTrace<G> {
 
   #[allow(clippy::too_many_arguments)]
   fn rw_operation_circuit<F: PrimeField, CS: ConstraintSystem<F>>(
-    &mut self,
+    &self,
     mut cs: CS,
     addr: &AllocatedNum<F>,
     challenges: &(AllocatedNum<F>, AllocatedNum<F>),
@@ -478,16 +477,8 @@ impl<'a, G: Group> LookupTraceBuilder<'a, G> {
   {
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
-    let final_values: Vec<<G as Group>::Scalar> = final_table
-      .get_table()
-      .iter()
-      .map(|(_, value, _)| *value)
-      .collect();
-    let final_counters: Vec<<G as Group>::Scalar> = final_table
-      .get_table()
-      .iter()
-      .map(|(_, _, counter)| *counter)
-      .collect();
+    let (final_values, final_counters): (Vec<_>, Vec<_>) =
+      final_table.map_aux.values().copied().unzip();
 
     // final_value and final_counter
     let (comm_final_value, comm_final_counter) = rayon::join(
@@ -600,7 +591,9 @@ pub fn add_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
   b: &AllocatedNum<F>,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let c = AllocatedNum::alloc(cs.namespace(|| "c"), || {
-    Ok(*a.get_value().get()? + b.get_value().get()?)
+    let mut tmp = a.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+    tmp.add_assign(&b.get_value().ok_or(SynthesisError::AssignmentMissing)?);
+    Ok(tmp)
   })?;
   cs.enforce(
     || "c = a+b",
@@ -619,10 +612,7 @@ pub fn less_than<F: PrimeField + PartialOrd, CS: ConstraintSystem<F>>(
   n_bits: usize,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   assert!(n_bits < 64, "not support n_bits {n_bits} >= 64");
-  let range = alloc_const(
-    cs.namespace(|| "range"),
-    F::from(2_usize.pow(n_bits as u32) as u64),
-  )?;
+  let range = alloc_const(cs.namespace(|| "range"), F::from(1u64 << n_bits))?;
   // diff = (lhs - rhs) + (if lt { range } else { 0 });
   let diff = Num::alloc(cs.namespace(|| "diff"), || {
     a.get_value()

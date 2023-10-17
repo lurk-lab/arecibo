@@ -1733,7 +1733,7 @@ mod tests {
         let num_steps = initial_index;
         let mut intermediate_gamma = initial_intermediate_gamma;
         // simulate folding step lookup io
-        let mut primary_circuits = vec![];
+        let mut primary_circuits = Vec::with_capacity(num_steps + 1);
         let ro_consts = <<G2 as Group>::RO as ROTrait<
           <G2 as Group>::Base,
           <G2 as Group>::Scalar,
@@ -1923,7 +1923,7 @@ mod tests {
           &new_parent_right,
         )?;
         lookup_trace.write(
-          cs.namespace(|| "write_left_pair_child"),
+          cs.namespace(|| "write_right_pair_child"),
           &right_child_index,
           &new_right_child,
         )?;
@@ -1964,29 +1964,6 @@ mod tests {
       }
     }
 
-    /// A trivial step circuit that simply returns the input
-    #[derive(Clone, Debug, Default, PartialEq, Eq)]
-    pub struct TrivialTestCircuit<F: PrimeField> {
-      _p: PhantomData<F>,
-    }
-
-    impl<F> StepCircuit<F> for TrivialTestCircuit<F>
-    where
-      F: PrimeField,
-    {
-      fn arity(&self) -> usize {
-        1
-      }
-
-      fn synthesize<CS: ConstraintSystem<F>>(
-        &self,
-        _cs: &mut CS,
-        z: &[AllocatedNum<F>],
-      ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
-        Ok(z.to_vec())
-      }
-    }
-
     let heap_size: usize = 4;
 
     let ro_consts: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::default();
@@ -2010,22 +1987,19 @@ mod tests {
     let (circuit_primaries, final_table, expected_intermediate_gamma) =
       HeapifyCircuit::new(&initial_table, ro_consts);
 
-    let circuit_secondary = TrivialTestCircuit::default();
+    let circuit_secondary = TrivialCircuit::default();
 
     // produce public parameters
     let pp_hint1 = Some(SPrime::<G1, EE<_>>::commitment_key_floor());
     let pp_hint2 = Some(SPrime::<G2, EE<_>>::commitment_key_floor());
-    let pp = PublicParams::<
-      G1,
-      G2,
-      HeapifyCircuit<G1, G2>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::new(
-      &circuit_primaries[0],
-      &circuit_secondary,
-      pp_hint1,
-      pp_hint2,
-    );
+
+    let pp =
+      PublicParams::<G1, G2, HeapifyCircuit<G1, G2>, TrivialCircuit<<G2 as Group>::Scalar>>::new(
+        &circuit_primaries[0],
+        &circuit_secondary,
+        pp_hint1,
+        pp_hint2,
+      );
 
     let z0_primary =
       HeapifyCircuit::<G1, G2>::get_z0(&pp.ck_primary, &final_table, expected_intermediate_gamma);
@@ -2041,7 +2015,7 @@ mod tests {
       G1,
       G2,
       HeapifyCircuit<G1, G2>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     > = RecursiveSNARK::new(
       &pp,
       &circuit_primaries[0],

@@ -583,20 +583,12 @@ where
     comm_final_counter.absorb_in_ro(&mut hasher);
     let computed_gamma = hasher.squeeze(NUM_CHALLENGE_BITS);
     if fingerprint_gamma != computed_gamma {
-      println!(
-        "fingerprint_gamma {:?} != computed_gamma {:?}",
-        fingerprint_gamma, computed_gamma
-      );
       return Err(NovaError::InvalidMultisetProof);
     }
     let mut hasher = <G as Group>::RO::new(ro_consts, 1);
     hasher.absorb(scalar_as_base::<G>(computed_gamma));
     let computed_alpha = hasher.squeeze(NUM_CHALLENGE_BITS);
     if fingerprint_alpha != computed_alpha {
-      println!(
-        "fingerprint_alpha {:?} != computed_alpha {:?}",
-        fingerprint_alpha, computed_alpha
-      );
       return Err(NovaError::InvalidMultisetProof);
     }
     Ok(())
