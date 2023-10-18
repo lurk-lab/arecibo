@@ -3,7 +3,7 @@ use crate::{
   constants::NUM_CHALLENGE_BITS,
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
-  gadgets::utils::scalar_as_base,
+  gadgets::{lookup::Lookup, utils::scalar_as_base},
   spartan::{
     math::Math,
     polys::{
@@ -120,17 +120,19 @@ where
   /// setup
   pub fn setup(
     ck: &CommitmentKey<G>,
-    initial_table: &Vec<(G::Scalar, G::Scalar, G::Scalar)>,
+    initial_table: &Lookup<G::Scalar>,
   ) -> Result<(ProverKey<G, EE>, VerifierKey<G, EE>), NovaError> {
     // check the provided commitment key meets minimal requirements
     // assert!(ck.length() >= Self::commitment_key_floor()(S));
-    let init_values: Vec<<G as Group>::Scalar> =
-      initial_table.iter().map(|(_, value, _)| *value).collect();
+    let init_values: Vec<<G as Group>::Scalar> = initial_table
+      .into_iter()
+      .map(|(_, (value, _))| *value)
+      .collect();
 
     let comm_init_value = G::CE::commit(ck, &init_values);
 
     let (pk_ee, vk_ee) = EE::setup(ck);
-    let table_size = initial_table.len();
+    let table_size = initial_table.table_size();
 
     let vk = VerifierKey::new(vk_ee, table_size, comm_init_value);
 
@@ -150,8 +152,8 @@ where
     challenges: (G::Scalar, G::Scalar),
     read_row: G::Scalar,
     write_row: G::Scalar,
-    initial_table: Vec<(G::Scalar, G::Scalar, G::Scalar)>,
-    final_table: Vec<(G::Scalar, G::Scalar, G::Scalar)>,
+    initial_table: &Lookup<G::Scalar>,
+    final_table: &Lookup<G::Scalar>,
   ) -> Result<Self, NovaError> {
     // a list of polynomial evaluation claims that will be batched
     let mut w_u_vec = Vec::new();
@@ -163,13 +165,13 @@ where
     };
     // init_row
     let initial_row: Vec<G::Scalar> = initial_table
-      .iter()
-      .map(|(addr, value, counter)| hash_func(addr, value, counter))
+      .into_iter()
+      .map(|(addr, (value, counter))| hash_func(addr, value, counter))
       .collect();
     // audit_row
     let audit_row: Vec<G::Scalar> = final_table
-      .iter()
-      .map(|(addr, value, counter)| hash_func(addr, value, counter))
+      .into_iter()
+      .map(|(addr, (value, counter))| hash_func(addr, value, counter))
       .collect();
     let mut transcript = G::TE::new(b"LookupSNARK");
     // append the verifier key (which includes commitment to R1CS matrices) and the read_row/write_row to the transcript
@@ -179,12 +181,12 @@ where
     transcript.absorb(b"alpha", &fingerprint_alpha);
     transcript.absorb(b"gamma", &fingerprint_gamma);
 
-    let init_values: Vec<<G as Group>::Scalar> =
-      initial_table.iter().map(|(_, value, _)| *value).collect();
-    let final_values: Vec<<G as Group>::Scalar> =
-      final_table.iter().map(|(_, value, _)| *value).collect();
-    let final_counters: Vec<<G as Group>::Scalar> =
-      final_table.iter().map(|(_, _, counter)| *counter).collect();
+    let init_values: Vec<<G as Group>::Scalar> = initial_table
+      .into_iter()
+      .map(|(_, (value, _))| *value)
+      .collect();
+    let (final_values, final_counters): (Vec<_>, Vec<_>) =
+      final_table.values().copied().unzip();
     let comm_init_value = pk.comm_init_value;
     let (comm_final_value, comm_final_counter) = rayon::join(
       || G::CE::commit(ck, &final_values),

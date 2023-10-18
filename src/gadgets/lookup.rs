@@ -1,6 +1,8 @@
 //! This module implements lookup gadget for applications built with Nova.
 use std::cmp::max;
+use std::collections::btree_map::Iter;
 use std::collections::BTreeMap;
+use std::collections::btree_map::Values;
 
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError};
 use std::cmp::Ord;
@@ -508,7 +510,7 @@ impl<'a, G: Group> LookupTraceBuilder<'a, G> {
 /// Lookup in R1CS
 #[derive(Clone, Debug)]
 pub struct Lookup<F: PrimeField> {
-  pub(crate) map_aux: BTreeMap<F, (F, F)>, // (value, counter)
+  map_aux: BTreeMap<F, (F, F)>, // (value, counter)
   rw_counter: F,
   pub(crate) table_type: TableType, // read only or read-write
   pub(crate) max_cap_rwcounter_log2: usize, // max cap for rw_counter operation in bits
@@ -536,19 +538,13 @@ impl<F: PrimeField> Lookup<F> {
     }
   }
 
-  /// get table vector
-  /// very costly operation
-  pub fn get_table(&self) -> Vec<(F, F, F)> {
-    self
-      .map_aux
-      .iter()
-      .map(|(addr, (value, counter))| (*addr, *value, *counter))
-      .collect()
-  }
-
   /// table size
   pub fn table_size(&self) -> usize {
     self.map_aux.len()
+  }
+
+  pub fn values(&self) -> Values<'_, F, (F, F)> {
+    self.map_aux.values()
   }
 
   fn rw_operation(&mut self, addr: F, external_value: Option<F>) -> (F, F)
@@ -577,8 +573,15 @@ impl<F: PrimeField> Lookup<F> {
     self.rw_counter = write_counter;
     (read_value, read_counter)
   }
+}
 
-  // fn write(&mut self, addr: AllocatedNum<F>, value: F) {}
+impl<'a, F: PrimeField> IntoIterator for &'a Lookup<F> {
+  type Item = (&'a F, &'a (F, F));
+  type IntoIter = Iter<'a, F, (F, F)>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    self.map_aux.iter()
+  }
 }
 
 /// c = a + b where a, b is AllocatedNum

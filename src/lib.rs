@@ -1719,11 +1719,10 @@ mod tests {
       G2: Group<Base = <G1 as Group>::Scalar>,
     {
       fn new(
-        initial_table: &Lookup<G1::Scalar>,
+        initial_table: Lookup<G1::Scalar>,
         ro_consts_circuit: ROConstantsCircuit<G2>,
       ) -> (Vec<Self>, Lookup<G1::Scalar>, G1::Scalar) {
         let n = initial_table.table_size();
-        let initial_table = initial_table.clone();
 
         let initial_index = (n - 4) / 2;
         let max_value_bits = (n - 1).log_2() + 1; // + 1 as a buffer
@@ -1985,7 +1984,7 @@ mod tests {
     };
 
     let (circuit_primaries, final_table, expected_intermediate_gamma) =
-      HeapifyCircuit::new(&initial_table, ro_consts);
+      HeapifyCircuit::new(initial_table.clone(), ro_consts);
 
     let circuit_secondary = TrivialCircuit::default();
 
@@ -2076,17 +2075,15 @@ mod tests {
     );
 
     // lookup snark prove/verify
-    // type EE = crate::provider::ipa_pc::EvaluationEngine<G1>;
-    let (pk, vk) =
-      LookupSNARK::<G1, EE<_>>::setup(&pp.ck_primary, &initial_table.get_table()).unwrap();
+    let (pk, vk) = LookupSNARK::<G1, EE<_>>::setup(&pp.ck_primary, &initial_table).unwrap();
     let snark_proof = LookupSNARK::<G1, EE<_>>::prove(
       &pp.ck_primary,
       &pk,
       (alpha, gamma),
       read_row,
       write_row,
-      initial_table.get_table(),
-      final_table.get_table(),
+      &initial_table,
+      &final_table,
     )
     .unwrap();
 
