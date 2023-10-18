@@ -2040,14 +2040,12 @@ mod tests {
     }
     // verify the recursive SNARK
     let res = recursive_snark.verify(&pp, num_steps as usize, &z0_primary, &z0_secondary);
-    res
+    let (zn_primary, _) = res
       .clone()
       .map_err(|err| {
         print_constraints_name_on_error_index::<G1, G2, _>(&err, &circuit_primaries[0])
       })
       .unwrap();
-    assert!(res.is_ok());
-    let (zn_primary, _) = res.unwrap();
 
     assert_eq!(<G1 as Group>::Scalar::from(1).neg(), zn_primary[6]);
 

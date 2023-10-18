@@ -847,16 +847,12 @@ where
 
     let claim_batch_final_expected = {
       let poly_rz = EqPolynomial::new(r_z.clone());
-      let evals = u_vec_padded
-        .iter()
-        .map(|u| poly_rz.evaluate(&u.x))
-        .collect::<Vec<G::Scalar>>();
+      let evals = u_vec_padded.iter().map(|u| poly_rz.evaluate(&u.x));
 
       evals
-        .iter()
         .zip(self.evals_batch_arr.iter())
         .zip(powers_of_rho.iter())
-        .map(|((e_i, p_i), rho_i)| *e_i * *p_i * rho_i)
+        .map(|((e_i, p_i), rho_i)| e_i * *p_i * rho_i)
         .sum()
     };
 
