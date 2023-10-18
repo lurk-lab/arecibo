@@ -431,35 +431,48 @@ impl<'a, G: Group> LookupTraceBuilder<'a, G> {
       <G2 as Group>::RO::new(ro_consts, 1 + self.rw_trace.len() * 3);
     hasher.absorb(prev_intermediate_gamma);
 
-    self.rw_trace = self
+    let rw_processed = self
       .rw_trace
-      .iter()
+      .drain(..)
       .map(|rwtrace| {
-        let (addr, (read_value, read_counter)) = match rwtrace {
-          RWTrace::Read(addr, _, _) => (addr, self.lookup.rw_operation(*addr, None)),
+        let (rw_trace_with_counter, addr, read_value, read_counter) = match rwtrace {
+          RWTrace::Read(addr, expected_read_value, _) => {
+            let (read_value, read_counter) = self.lookup.rw_operation(addr, None);
+            assert_eq!(
+              read_value, expected_read_value,
+              "expected_read_value {:?} != read_value {:?}",
+              expected_read_value, read_value
+            );
+            (
+              RWTrace::Read(addr, expected_read_value, read_counter),
+              addr,
+              expected_read_value,
+              read_counter,
+            )
+          }
           RWTrace::Write(addr, _, write_value, _) => {
-            (addr, self.lookup.rw_operation(*addr, Some(*write_value)))
+            let (read_value, read_counter) = self.lookup.rw_operation(addr, Some(write_value));
+            (
+              RWTrace::Write(addr, read_value, write_value, read_counter),
+              addr,
+              read_value,
+              read_counter,
+            )
           }
         };
-        hasher.absorb(*addr);
+        hasher.absorb(addr);
         hasher.absorb(read_value);
         hasher.absorb(read_counter);
-        match rwtrace {
-          RWTrace::Read(..) => RWTrace::Read(*addr, read_value, read_counter),
-          RWTrace::Write(_, _, write_value, _) => {
-            RWTrace::Write(*addr, read_value, *write_value, read_counter)
-          }
-        }
+
+        rw_trace_with_counter
       })
       .collect();
     let hash_bits = hasher.squeeze(NUM_CHALLENGE_BITS);
-    let rw_trace = self.rw_trace.to_vec();
-    self.rw_trace.clear();
     let next_intermediate_gamma = scalar_as_base::<G2>(hash_bits);
     (
       next_intermediate_gamma,
       LookupTrace {
-        expected_rw_trace: rw_trace,
+        expected_rw_trace: rw_processed,
         rw_trace_allocated_num: vec![],
         cursor: 0,
         max_cap_rwcounter_log2: self.lookup.max_cap_rwcounter_log2,
