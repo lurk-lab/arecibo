@@ -185,8 +185,7 @@ where
       .into_iter()
       .map(|(_, (value, _))| *value)
       .collect();
-    let (final_values, final_counters): (Vec<_>, Vec<_>) =
-      final_table.values().copied().unzip();
+    let (final_values, final_counters): (Vec<_>, Vec<_>) = final_table.values().copied().unzip();
     let comm_init_value = pk.comm_init_value;
     let (comm_final_value, comm_final_counter) = rayon::join(
       || G::CE::commit(ck, &final_values),
@@ -272,7 +271,7 @@ where
     let eval_right_vec = final_claims[2].clone();
     let eval_output_vec = final_claims[3].clone();
 
-    let eval_vec = vec![
+    let eval_vec = [
       eval_left_vec.clone(),
       eval_right_vec.clone(),
       eval_output_vec.clone(),

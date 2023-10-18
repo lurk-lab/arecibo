@@ -1,8 +1,8 @@
 //! This module implements lookup gadget for applications built with Nova.
 use std::cmp::max;
 use std::collections::btree_map::Iter;
-use std::collections::BTreeMap;
 use std::collections::btree_map::Values;
+use std::collections::BTreeMap;
 
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError};
 use std::cmp::Ord;
@@ -66,37 +66,35 @@ impl<G: Group> LookupTrace<G> {
       self.cursor,
       self.expected_rw_trace.len()
     );
-    let read_value =
-      if let RWTrace::Read(expected_addr, expected_read_value, expected_read_counter) =
-        self.expected_rw_trace[self.cursor]
-      {
-        if let Some(key) = addr.get_value() {
-          assert!(
-            key == expected_addr,
-            "read address {:?} mismatch with expected {:?}",
-            key,
-            expected_addr
-          );
-        }
-        let read_value =
-          AllocatedNum::alloc(cs.namespace(|| "read_value"), || Ok(expected_read_value))?;
-        let read_counter = AllocatedNum::alloc(cs.namespace(|| "read_counter"), || {
-          Ok(expected_read_counter)
-        })?;
-        self
-          .rw_trace_allocated_num
-          .push(RWTrace::Read::<AllocatedNum<G::Scalar>>(
-            addr.clone(),
-            read_value.clone(),
-            read_counter,
-          )); // append read trace
+    let RWTrace::Read(expected_addr, expected_read_value, expected_read_counter) =
+      self.expected_rw_trace[self.cursor]
+    else {
+      Err(SynthesisError::AssignmentMissing)?
+    };
 
-        self.cursor += 1;
-        Ok(read_value)
-      } else {
-        Err(SynthesisError::AssignmentMissing)
-      };
-    read_value
+    if let Some(key) = addr.get_value() {
+      assert!(
+        key == expected_addr,
+        "read address {:?} mismatch with expected {:?}",
+        key,
+        expected_addr
+      );
+    }
+    let read_value =
+      AllocatedNum::alloc(cs.namespace(|| "read_value"), || Ok(expected_read_value))?;
+    let read_counter = AllocatedNum::alloc(cs.namespace(|| "read_counter"), || {
+      Ok(expected_read_counter)
+    })?;
+    self
+      .rw_trace_allocated_num
+      .push(RWTrace::Read::<AllocatedNum<G::Scalar>>(
+        addr.clone(),
+        read_value.clone(),
+        read_counter,
+      )); // append read trace
+
+    self.cursor += 1;
+    Ok(read_value)
   }
 
   /// write value to lookup table
@@ -115,44 +113,44 @@ impl<G: Group> LookupTrace<G> {
       self.cursor,
       self.expected_rw_trace.len()
     );
-    let result = if let RWTrace::Write(
+    let RWTrace::Write(
       expected_addr,
       expected_read_value,
       expected_write_value,
       expected_read_counter,
     ) = self.expected_rw_trace[self.cursor]
-    {
-      if let Some((addr, value)) = addr.get_value().zip(value.get_value()) {
-        assert!(
-          addr == expected_addr,
-          "write address {:?} mismatch with expected {:?}",
-          addr,
-          expected_addr
-        );
-        assert!(
-          value == expected_write_value,
-          "write value {:?} mismatch with expected {:?}",
-          value,
-          expected_write_value
-        );
-      }
-      let expected_read_value =
-        AllocatedNum::alloc(cs.namespace(|| "read_value"), || Ok(expected_read_value))?;
-      let expected_read_counter = AllocatedNum::alloc(cs.namespace(|| "read_counter"), || {
-        Ok(expected_read_counter)
-      })?;
-      self.rw_trace_allocated_num.push(RWTrace::Write(
-        addr.clone(),
-        expected_read_value,
-        value.clone(),
-        expected_read_counter,
-      )); // append write trace
-      self.cursor += 1;
-      Ok(())
-    } else {
-      Err(SynthesisError::AssignmentMissing)
+    else {
+      Err(SynthesisError::AssignmentMissing)?
     };
-    result
+
+    if let Some((addr, value)) = addr.get_value().zip(value.get_value()) {
+      assert!(
+        addr == expected_addr,
+        "write address {:?} mismatch with expected {:?}",
+        addr,
+        expected_addr
+      );
+      assert!(
+        value == expected_write_value,
+        "write value {:?} mismatch with expected {:?}",
+        value,
+        expected_write_value
+      );
+    }
+
+    let expected_read_value =
+      AllocatedNum::alloc(cs.namespace(|| "read_value"), || Ok(expected_read_value))?;
+    let expected_read_counter = AllocatedNum::alloc(cs.namespace(|| "read_counter"), || {
+      Ok(expected_read_counter)
+    })?;
+    self.rw_trace_allocated_num.push(RWTrace::Write(
+      addr.clone(),
+      expected_read_value,
+      value.clone(),
+      expected_read_counter,
+    )); // append write trace
+    self.cursor += 1;
+    Ok(())
   }
 
   /// commit rw_trace to lookup
@@ -543,6 +541,7 @@ impl<F: PrimeField> Lookup<F> {
     self.map_aux.len()
   }
 
+  /// table values
   pub fn values(&self) -> Values<'_, F, (F, F)> {
     self.map_aux.values()
   }
