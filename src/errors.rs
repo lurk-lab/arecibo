@@ -62,4 +62,7 @@ pub enum NovaError {
   /// returned when there is an error creating a digest
   #[error("DigestError")]
   DigestError,
+  /// returned when attempting to extend a commitment key with a label it was not originally generated from
+  #[error("InvalidCommitmentKeyLabel")]
+  InvalidCommitmentKeyLabel,
 }

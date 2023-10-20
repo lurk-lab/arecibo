@@ -18,7 +18,7 @@ use crate::{
     PolyEvalInstance, PolyEvalWitness, SparsePolynomial,
   },
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
+    commitment::{CommitmentEngineTrait, CommitmentKeyTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
     snark::RelaxedR1CSSNARKTrait,
     Group, TranscriptEngineTrait, TranscriptReprTrait,

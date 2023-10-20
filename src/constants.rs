@@ -8,3 +8,7 @@ pub(crate) const NUM_FE_FOR_RO: usize = 24;
 
 /// Bit size of Nova field element hashes
 pub const NUM_HASH_BITS: usize = 250;
+
+/// The threshold of elements we check when extending a `CommitmentKey` to avoid regressions due to code changes.
+/// There are no security guarantees here
+pub(crate) const CK_CHECKING_THRESHOLD: usize = 1;

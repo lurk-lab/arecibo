@@ -55,7 +55,8 @@ macro_rules! impl_traits {
     $name_compressed:ident,
     $name_curve:ident,
     $name_curve_affine:ident,
-    $order_str:literal
+    $order_str:literal,
+    $name_str:literal
   ) => {
     impl Group for $name::Point {
       type Base = $name::Base;
@@ -100,17 +101,31 @@ macro_rules! impl_traits {
         $name_compressed::new(self.to_bytes())
       }
 
-      fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+      fn from_label_with_offset(
+        label: &'static [u8],
+        offset: usize,
+        n: usize,
+      ) -> Vec<Self::PreprocessedGroupElement> {
+        // deal with weird edge cases
+        if offset >= n {
+          return Vec::default();
+        }
+
         let mut shake = Shake256::default();
         shake.update(label);
         let mut reader = shake.finalize_xof();
         let mut uniform_bytes_vec = Vec::new();
-        for _ in 0..n {
+        // discard the first `offset` number of `uniform_bytes`; this is very cheap
+        for _ in 0..offset {
+          let mut uniform_bytes = [0u8; 32];
+          reader.read_exact(&mut uniform_bytes).unwrap();
+        }
+        for _ in 0..(n - offset) {
           let mut uniform_bytes = [0u8; 32];
           reader.read_exact(&mut uniform_bytes).unwrap();
           uniform_bytes_vec.push(uniform_bytes);
         }
-        let ck_proj: Vec<$name_curve> = (0..n)
+        let ck_proj: Vec<$name_curve> = (0..(n - offset))
           .into_par_iter()
           .map(|i| {
             let hash = $name_curve::hash_to_curve("from_uniform_bytes");
@@ -140,7 +155,7 @@ macro_rules! impl_traits {
             })
             .collect()
         } else {
-          let mut ck = vec![$name_curve_affine::identity(); n];
+          let mut ck = vec![$name_curve_affine::identity(); n - offset];
           <Self as Curve>::batch_normalize(&ck_proj, &mut ck);
           ck
         }
@@ -169,6 +184,10 @@ macro_rules! impl_traits {
 
       fn get_generator() -> Self {
         $name::Point::generator()
+      }
+
+      fn name() -> &'static str {
+        $name_str
       }
     }
 
@@ -212,7 +231,8 @@ impl_traits!(
   PallasCompressedElementWrapper,
   Ep,
   EpAffine,
-  "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001"
+  "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001",
+  "pallas"
 );
 
 impl_traits!(
@@ -220,7 +240,8 @@ impl_traits!(
   VestaCompressedElementWrapper,
   Eq,
   EqAffine,
-  "40000000000000000000000000000000224698fc094cf91b992d30ed00000001"
+  "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
+  "vesta"
 );
 
 #[cfg(test)]
@@ -250,6 +271,24 @@ mod tests {
     ] {
       let ck_par = <G as Group>::from_label(label, n);
       let ck_ser = from_label_serial(label, n);
+      assert_eq!(ck_par.len(), n);
+      assert_eq!(ck_ser.len(), n);
+      assert_eq!(ck_par, ck_ser);
+    }
+  }
+
+  #[test]
+  fn test_from_label_with_offset() {
+    let label = b"test_from_label";
+    let mut ck_par = vec![];
+    for n in [
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
+    ] {
+      let offset = ck_par.len();
+      ck_par.extend(<G as Group>::from_label_with_offset(label, offset, n));
+
+      let ck_ser = from_label_serial(label, n);
+
       assert_eq!(ck_par.len(), n);
       assert_eq!(ck_ser.len(), n);
       assert_eq!(ck_par, ck_ser);

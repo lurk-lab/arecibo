@@ -80,7 +80,20 @@ pub trait Group:
   fn preprocessed(&self) -> Self::PreprocessedGroupElement;
 
   /// Produce a vector of group elements using a static label
-  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement>;
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+    Self::from_label_with_offset(label, 0, n)
+  }
+
+  /// Produce a vector of `n - offset` group elements using a static label,
+  /// by first generating `n` elements and then discarding the first `offset` of them
+  ///
+  /// Note: the elements are *deterministically* generated from the label. The intention here
+  /// is to leverage that and save some work by skipping the first `offset` when we already have them.
+  fn from_label_with_offset(
+    label: &'static [u8],
+    offset: usize,
+    n: usize,
+  ) -> Vec<Self::PreprocessedGroupElement>;
 
   /// Returns the affine coordinates (x, y, infinty) for the point
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
@@ -93,6 +106,9 @@ pub trait Group:
 
   /// Returns A, B, and the order of the group as a big integer
   fn get_curve_params() -> (Self::Base, Self::Base, BigInt);
+
+  /// Returns the user name of this group
+  fn name() -> &'static str;
 }
 
 /// Represents a compressed version of a group element
