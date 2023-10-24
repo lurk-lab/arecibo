@@ -17,6 +17,8 @@ mod digest;
 mod nifs;
 
 // public modules
+#[cfg(not(target_arch = "wasm32"))]
+pub mod cache;
 pub mod constants;
 pub mod errors;
 pub mod gadgets;

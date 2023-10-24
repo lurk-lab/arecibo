@@ -55,7 +55,8 @@ impl_traits!(
   Secp256k1Compressed,
   Secp256k1,
   Secp256k1Affine,
-  "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
+  "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+  "secp256k1"
 );
 
 impl_traits!(
@@ -63,7 +64,8 @@ impl_traits!(
   Secq256k1Compressed,
   Secq256k1,
   Secq256k1Affine,
-  "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
+  "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
+  "secq256k1"
 );
 
 #[cfg(test)]
@@ -93,6 +95,24 @@ mod tests {
     ] {
       let ck_par = <G as Group>::from_label(label, n);
       let ck_ser = from_label_serial(label, n);
+      assert_eq!(ck_par.len(), n);
+      assert_eq!(ck_ser.len(), n);
+      assert_eq!(ck_par, ck_ser);
+    }
+  }
+
+  #[test]
+  fn test_from_label_with_offset() {
+    let label = b"test_from_label";
+    let mut ck_par = vec![];
+    for n in [
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
+    ] {
+      let offset = ck_par.len();
+      ck_par.extend(<G as Group>::from_label_with_offset(label, offset, n));
+
+      let ck_ser = from_label_serial(label, n);
+
       assert_eq!(ck_par.len(), n);
       assert_eq!(ck_ser.len(), n);
       assert_eq!(ck_par, ck_ser);

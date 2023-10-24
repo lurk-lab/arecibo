@@ -2,7 +2,7 @@
 use crate::{
   errors::NovaError,
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
+    commitment::{CommitmentEngineTrait, CommitmentKeyTrait, CommitmentTrait},
     AbsorbInROTrait, CompressedGroup, Group, ROTrait, TranscriptReprTrait,
   },
 };
@@ -15,6 +15,7 @@ use core::{
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::{io, mem};
 
 /// A type that holds commitment generators
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Abomonation)]
@@ -33,9 +34,39 @@ impl<G: Group> Clone for CommitmentKey<G> {
   }
 }
 
-impl<G: Group> Len for CommitmentKey<G> {
+impl<G: Group> CommitmentKeyTrait for CommitmentKey<G> {
   fn length(&self) -> usize {
     self.ck.len()
+  }
+
+  fn is_prefix_of(&self, other: &Self) -> bool {
+    other.ck.starts_with(&self.ck)
+  }
+
+  fn encode<W: std::io::Write>(&self, write: &mut W) -> io::Result<()> {
+    // TODO: unwrap()
+    unsafe { abomonation::encode(self, write) }
+  }
+
+  fn decode(bytes: &mut [u8], n: usize) -> io::Result<Self> {
+    // Note: this is unsafe but stable; it only assumes that `bytes` is any valid commitment key
+    unsafe {
+      // Ideally, we would like to allocate only one commitment key, because if we simply loaded
+      // all the bytes from the reader, we might be tapping into a cached commitment key with
+      // >=10^7 elements and kill the process. Instead, we need to manipulate the bytes to convince
+      // `abomonation::decode` to only decode what we need by manipulating the `Vec` header.
+      let mut test_ck = Self { ck: Vec::new() };
+      test_ck.ck.set_len(n);
+      let header_size = mem::size_of::<Self>();
+      let header: &[u8] =
+        std::slice::from_raw_parts(&test_ck as *const _ as *const u8, header_size);
+      bytes[..header_size].copy_from_slice(header);
+
+      let (ck, _remaining) = abomonation::decode::<Self>(bytes)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "failed to decode bytes"))?;
+
+      Ok(ck.clone())
+    }
   }
 }
 
@@ -211,6 +242,11 @@ impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
     Self::CommitmentKey {
       ck: G::from_label(label, n.next_power_of_two()),
     }
+  }
+
+  fn extend_aux(ck: &mut Self::CommitmentKey, label: &'static [u8], n: usize) {
+    let ck_extend = G::from_label_with_offset(label, ck.length(), n.next_power_of_two());
+    ck.ck.extend(ck_extend);
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[G::Scalar]) -> Self::Commitment {

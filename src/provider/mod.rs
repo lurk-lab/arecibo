@@ -152,7 +152,8 @@ macro_rules! impl_traits {
     $name_compressed:ident,
     $name_curve:ident,
     $name_curve_affine:ident,
-    $order_str:literal
+    $order_str:literal,
+    $name_str:literal
   ) => {
     impl Group for $name::Point {
       type Base = $name::Base;
@@ -179,17 +180,33 @@ macro_rules! impl_traits {
         self.to_bytes()
       }
 
-      fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+      fn from_label_with_offset(
+        label: &'static [u8],
+        offset: usize,
+        n: usize,
+      ) -> Vec<Self::PreprocessedGroupElement> {
+        // deal with weird edge cases
+        if offset >= n {
+          return Vec::default();
+        }
+
         let mut shake = Shake256::default();
         shake.update(label);
         let mut reader = shake.finalize_xof();
         let mut uniform_bytes_vec = Vec::new();
-        for _ in 0..n {
+
+        // discard the first `offset` number of `uniform_bytes`; this is very cheap
+        for _ in 0..offset {
+          let mut uniform_bytes = [0u8; 32];
+          reader.read_exact(&mut uniform_bytes).unwrap();
+        }
+        for _ in 0..(n - offset) {
           let mut uniform_bytes = [0u8; 32];
           reader.read_exact(&mut uniform_bytes).unwrap();
           uniform_bytes_vec.push(uniform_bytes);
         }
-        let gens_proj: Vec<$name_curve> = (0..n)
+
+        let gens_proj: Vec<$name_curve> = (0..(n - offset))
           .into_par_iter()
           .map(|i| {
             let hash = $name_curve::hash_to_curve("from_uniform_bytes");
@@ -198,6 +215,7 @@ macro_rules! impl_traits {
           .collect();
 
         let num_threads = rayon::current_num_threads();
+
         if gens_proj.len() > num_threads {
           let chunk = (gens_proj.len() as f64 / num_threads as f64).ceil() as usize;
           (0..num_threads)
@@ -219,7 +237,7 @@ macro_rules! impl_traits {
             })
             .collect()
         } else {
-          let mut gens = vec![$name_curve_affine::identity(); n];
+          let mut gens = vec![$name_curve_affine::identity(); n - offset];
           <Self as Curve>::batch_normalize(&gens_proj, &mut gens);
           gens
         }
@@ -251,6 +269,10 @@ macro_rules! impl_traits {
 
       fn get_generator() -> Self {
         $name::Point::generator()
+      }
+
+      fn name() -> &'static str {
+        $name_str
       }
     }
 

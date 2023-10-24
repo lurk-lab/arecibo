@@ -124,7 +124,6 @@ where
 {
   ro_consts_primary: ROConstants<G1>,
   ro_consts_circuit_primary: ROConstantsCircuit<G2>,
-  ck_primary: CommitmentKey<G1>, // This is shared between all circuit params
   augmented_circuit_params_primary: SuperNovaAugmentedCircuitParams,
 
   ro_consts_secondary: ROConstants<G2>,
@@ -168,8 +167,8 @@ where
   C2: StepCircuit<G2::Scalar>,
 {
   /// Construct a new [PublicParams]
-  pub fn new<NC: NonUniformCircuit<G1, G2, C1, C2>>(non_unifrom_circuit: &NC) -> Self {
-    let num_circuits = non_unifrom_circuit.num_circuits();
+  pub fn new<NC: NonUniformCircuit<G1, G2, C1, C2>>(non_uniform_circuit: &NC) -> Self {
+    let num_circuits = non_uniform_circuit.num_circuits();
 
     let augmented_circuit_params_primary =
       SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
@@ -179,7 +178,7 @@ where
 
     let circuit_shapes = (0..num_circuits)
       .map(|i| {
-        let c_primary = non_unifrom_circuit.primary_circuit(i);
+        let c_primary = non_uniform_circuit.primary_circuit(i);
         let F_arity = c_primary.arity();
         // Initialize ck for the primary
         let circuit_primary: SuperNovaAugmentedCircuit<'_, G2, C1> = SuperNovaAugmentedCircuit::new(
@@ -202,7 +201,7 @@ where
     let augmented_circuit_params_secondary =
       SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::default();
-    let c_secondary = non_unifrom_circuit.secondary_circuit();
+    let c_secondary = non_uniform_circuit.secondary_circuit();
     let F_arity_secondary = c_secondary.arity();
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::default();
 
@@ -239,8 +238,8 @@ where
     pp
   }
 
-  /// Breaks down an instance of [PublicParams] into the circuit params and auxilliary params.
-  pub fn into_parts(self) -> (Vec<CircuitShape<G1>>, AuxParams<G1, G2>) {
+  /// Breaks down an instance of [PublicParams] into the circuit params, auxilliary params, and primary commitment key.
+  pub fn into_parts(self) -> (Vec<CircuitShape<G1>>, AuxParams<G1, G2>, CommitmentKey<G1>) {
     let digest = self.digest();
 
     let PublicParams {
@@ -261,7 +260,6 @@ where
     let aux_params = AuxParams {
       ro_consts_primary,
       ro_consts_circuit_primary,
-      ck_primary,
       augmented_circuit_params_primary,
       ro_consts_secondary,
       ro_consts_circuit_secondary,
@@ -271,16 +269,20 @@ where
       digest,
     };
 
-    (circuit_shapes, aux_params)
+    (circuit_shapes, aux_params, ck_primary)
   }
 
-  /// Create a [PublicParams] from a vector of raw [CircuitShape] and auxilliary params.
-  pub fn from_parts(circuit_shapes: Vec<CircuitShape<G1>>, aux_params: AuxParams<G1, G2>) -> Self {
+  /// Create a [PublicParams] from a vector of raw [CircuitShape], auxilliary params, and the primary commitment key.
+  pub fn from_parts(
+    circuit_shapes: Vec<CircuitShape<G1>>,
+    aux_params: AuxParams<G1, G2>,
+    ck_primary: CommitmentKey<G1>,
+  ) -> Self {
     let pp = PublicParams {
       circuit_shapes,
       ro_consts_primary: aux_params.ro_consts_primary,
       ro_consts_circuit_primary: aux_params.ro_consts_circuit_primary,
-      ck_primary: aux_params.ck_primary,
+      ck_primary,
       augmented_circuit_params_primary: aux_params.augmented_circuit_params_primary,
       ro_consts_secondary: aux_params.ro_consts_secondary,
       ro_consts_circuit_secondary: aux_params.ro_consts_circuit_secondary,
@@ -298,17 +300,18 @@ where
     pp
   }
 
-  /// Create a [PublicParams] from a vector of raw [CircuitShape] and auxilliary params.
+  /// Create a [PublicParams] from a vector of raw [CircuitShape], auxilliary params, and the primary commitment key.
   /// We don't check that the `aux_params.digest` is a valid digest for the created params.
   pub fn from_parts_unchecked(
     circuit_shapes: Vec<CircuitShape<G1>>,
     aux_params: AuxParams<G1, G2>,
+    ck_primary: CommitmentKey<G1>,
   ) -> Self {
     PublicParams {
       circuit_shapes,
       ro_consts_primary: aux_params.ro_consts_primary,
       ro_consts_circuit_primary: aux_params.ro_consts_circuit_primary,
-      ck_primary: aux_params.ck_primary,
+      ck_primary,
       augmented_circuit_params_primary: aux_params.augmented_circuit_params_primary,
       ro_consts_secondary: aux_params.ro_consts_secondary,
       ro_consts_circuit_secondary: aux_params.ro_consts_circuit_secondary,

@@ -3,6 +3,8 @@ use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::PrimeField;
 
+use super::Group;
+
 /// A helper trait for a step of the incremental computation for `SuperNova` (i.e., circuit for F) -- to be implemented by
 /// applications.
 pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
@@ -25,6 +27,22 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
     pc: Option<&AllocatedNum<F>>,
     z: &[AllocatedNum<F>],
   ) -> Result<(Option<AllocatedNum<F>>, Vec<AllocatedNum<F>>), SynthesisError>;
+
+  /// Return a digest that represents a hash of the circuit shape. This is useful for keeping
+  /// track of differences between many iterations of a circuit. Specifically, this is used by
+  /// the cache as a key to fetch public parameters.
+  ///
+  /// Note: Because this is used as a cache key, implementers of this method should design good
+  /// performance characteristics by leveraging the particular shape of their circuits.
+  /// Otherwise, the default implementation will synthesize and digest the full circuit given.
+  /// See: [crate::supernova::circuit_digest].
+  fn circuit_digest<G1, G2>(&self, num_augmented_circuits: usize) -> F
+  where
+    G1: Group<Scalar = F, Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+  {
+    crate::supernova::circuit_digest::<G1, G2, Self>(self, num_augmented_circuits)
+  }
 }
 
 /// A helper trait for a step of the incremental computation for `SuperNova` (i.e., circuit for F) -- automatically
