@@ -34,12 +34,12 @@ use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-fn vec_to_arr<T, const N: usize>(v: Vec<T>) -> [T; N] {
+pub(crate) fn vec_to_arr<T, const N: usize>(v: Vec<T>) -> [T; N] {
   v.try_into()
     .unwrap_or_else(|v: Vec<T>| panic!("Expected a Vec of length {} but it was {}", N, v.len()))
 }
 
-struct IdentityPolynomial<Scalar: PrimeField> {
+pub(crate) struct IdentityPolynomial<Scalar: PrimeField> {
   ell: usize,
   _p: PhantomData<Scalar>,
 }
@@ -321,12 +321,12 @@ pub trait SumcheckEngine<G: Group> {
   fn final_claims(&self) -> Vec<Vec<G::Scalar>>;
 }
 
-struct ProductSumcheckInstance<G: Group> {
+pub(crate) struct ProductSumcheckInstance<G: Group> {
   pub(crate) claims: Vec<G::Scalar>, // claimed products
   pub(crate) comm_output_vec: Vec<Commitment<G>>,
 
-  input_vec: Vec<Vec<G::Scalar>>,
-  output_vec: Vec<Vec<G::Scalar>>,
+  pub(crate) input_vec: Vec<Vec<G::Scalar>>,
+  pub(crate) output_vec: Vec<Vec<G::Scalar>>,
 
   poly_A: MultilinearPolynomial<G::Scalar>,
   poly_B_vec: Vec<MultilinearPolynomial<G::Scalar>>,
@@ -446,7 +446,7 @@ impl<G: Group> ProductSumcheckInstance<G> {
 
 impl<G: Group> SumcheckEngine<G> for ProductSumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
-    vec![G::Scalar::ZERO; 8]
+    vec![G::Scalar::ZERO; self.claims.len()]
   }
 
   fn degree(&self) -> usize {

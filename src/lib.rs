@@ -948,8 +948,14 @@ type CE<G> = <G as Group>::CE;
 
 #[cfg(test)]
 mod tests {
+  use crate::bellpepper::test_shape_cs::TestShapeCS;
+  use crate::gadgets::lookup::{less_than, Lookup, LookupTrace, LookupTraceBuilder, TableType};
+  use crate::gadgets::utils::conditionally_select2;
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
+  use crate::provider::poseidon::PoseidonConstantsCircuit;
   use crate::provider::secp_secq::{secp256k1, secq256k1};
+  use crate::spartan::lookupsnark::LookupSNARK;
+  use crate::spartan::math::Math;
   use crate::traits::evaluation::EvaluationEngineTrait;
   use core::fmt::Write;
 
@@ -959,8 +965,10 @@ mod tests {
   type SPrime<G, EE> = spartan::ppsnark::RelaxedR1CSSNARK<G, EE>;
 
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use bellpepper_core::Namespace;
   use core::marker::PhantomData;
   use ff::PrimeField;
+  use tap::TapOptional;
   use traits::circuit::TrivialCircuit;
 
   #[derive(Clone, Debug, Default)]
@@ -1631,5 +1639,439 @@ mod tests {
     test_ivc_base_with::<G1, G2>();
     test_ivc_base_with::<bn256::Point, grumpkin::Point>();
     test_ivc_base_with::<secp256k1::Point, secq256k1::Point>();
+  }
+
+  fn print_constraints_name_on_error_index<G1, G2, C1>(err: &NovaError, c_primary: &C1)
+  where
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+    C1: StepCircuit<G1::Scalar>,
+  {
+    match err {
+      NovaError::UnSatIndex(index) => {
+        let augmented_circuit_params_primary =
+          NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+
+        // let (mut circuit_primary, z0_primary) = HeapifyCircuit::new(ro_consts);
+        let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::default();
+        let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
+          &augmented_circuit_params_primary,
+          None,
+          c_primary,
+          ro_consts_circuit_primary,
+        );
+        // let mut cs: ShapeCS<G1> = ShapeCS::new();
+        // let _ = circuit_primary.synthesize(&mut cs);
+        let mut cs: TestShapeCS<G1> = TestShapeCS::new();
+        let _ = circuit_primary.synthesize(&mut cs);
+        cs.constraints
+          .get(*index)
+          .tap_some(|constraint| println!("failed at constraint {}", constraint.3));
+      }
+      error => unimplemented!("{:?}", error),
+    }
+  }
+
+  #[test]
+  fn test_ivc_rwlookup() {
+    type G1 = pasta_curves::pallas::Point;
+    type G2 = pasta_curves::vesta::Point;
+
+    // rw lookup to serve as a non-deterministic advices.
+    #[derive(Clone)]
+    struct HeapifyCircuit<G1: Group, G2: Group>
+    where
+      <G1 as Group>::Scalar: Ord,
+      G1: Group<Base = <G2 as Group>::Scalar>,
+      G2: Group<Base = <G1 as Group>::Scalar>,
+    {
+      lookup_trace: LookupTrace<G1>,
+      ro_consts: ROConstantsCircuit<G2>,
+      max_value_bits: usize,
+      _phantom: PhantomData<G2>,
+    }
+
+    impl<G1: Group, G2: Group> HeapifyCircuit<G1, G2>
+    where
+      <G1 as Group>::Scalar: Ord,
+      G1: Group<Base = <G2 as Group>::Scalar>,
+      G2: Group<Base = <G1 as Group>::Scalar>,
+    {
+      fn new(
+        initial_table: Lookup<G1::Scalar>,
+        ro_consts_circuit: ROConstantsCircuit<G2>,
+      ) -> (Vec<Self>, Lookup<G1::Scalar>, G1::Scalar) {
+        let n = initial_table.table_size();
+
+        let initial_index = (n - 4) / 2;
+        let max_value_bits = (n - 1).log_2() + 1; // + 1 as a buffer
+        let initial_intermediate_gamma = <G1 as Group>::Scalar::from(1);
+
+        let mut lookup = initial_table;
+        let num_steps = initial_index;
+        let mut intermediate_gamma = initial_intermediate_gamma;
+        // simulate folding step lookup io
+        let mut primary_circuits = Vec::with_capacity(num_steps + 1);
+        let ro_consts = <<G2 as Group>::RO as ROTrait<
+          <G2 as Group>::Base,
+          <G2 as Group>::Scalar,
+        >>::Constants::default();
+        for i in 0..num_steps + 1 {
+          let mut lookup_trace_builder = LookupTraceBuilder::<G1>::new(&mut lookup);
+          let addr = G1::Scalar::from((num_steps - i) as u64);
+          let parent = lookup_trace_builder.read(addr);
+          let left_child = lookup_trace_builder.read(G1::Scalar::from(2) * addr + G1::Scalar::ONE);
+          let right_child =
+            lookup_trace_builder.read(G1::Scalar::from(2) * addr + G1::Scalar::from(2));
+          // swap left pair
+          let (new_parent_left, new_left_child) = if left_child < parent {
+            (left_child, parent)
+          } else {
+            (parent, left_child)
+          };
+          lookup_trace_builder.write(addr, new_parent_left);
+          lookup_trace_builder.write(
+            G1::Scalar::from(2) * addr + G1::Scalar::from(1),
+            new_left_child,
+          );
+          // swap right pair
+          let (new_parent_right, new_right_child) = if right_child < new_parent_left {
+            (right_child, new_parent_left)
+          } else {
+            (new_parent_left, right_child)
+          };
+          lookup_trace_builder.write(addr, new_parent_right);
+          lookup_trace_builder.write(
+            G1::Scalar::from(2) * addr + G1::Scalar::from(2),
+            new_right_child,
+          );
+          let res = lookup_trace_builder.snapshot::<G2>(ro_consts.clone(), intermediate_gamma);
+          intermediate_gamma = res.0;
+          let (_, lookup_trace) = res;
+          primary_circuits.push(Self {
+            lookup_trace,
+            ro_consts: ro_consts_circuit.clone(),
+            max_value_bits,
+            _phantom: PhantomData::<G2> {},
+          });
+        }
+
+        (primary_circuits, lookup, intermediate_gamma)
+      }
+
+      fn get_z0(
+        ck: &CommitmentKey<G1>,
+        final_table: &Lookup<G1::Scalar>,
+        intermediate_gamma: G1::Scalar,
+      ) -> Vec<G1::Scalar>
+      where
+        G1: Group<Base = <G2 as Group>::Scalar>,
+        G2: Group<Base = <G1 as Group>::Scalar>,
+      {
+        let n = final_table.table_size();
+        let initial_index = (n - 4) / 2;
+        let (initial_intermediate_gamma, init_prev_R, init_prev_W, init_rw_counter) = (
+          <G1 as Group>::Scalar::from(1),
+          <G1 as Group>::Scalar::from(1),
+          <G1 as Group>::Scalar::from(1),
+          <G1 as Group>::Scalar::from(0),
+        );
+
+        let (alpha, gamma) =
+          LookupTraceBuilder::<G1>::get_challenge::<G2>(ck, final_table, intermediate_gamma);
+        vec![
+          initial_intermediate_gamma,
+          alpha,
+          gamma,
+          init_prev_R,
+          init_prev_W,
+          init_rw_counter,
+          G1::Scalar::from(initial_index as u64),
+        ]
+      }
+    }
+
+    impl<F: PrimeField, G1: Group + Group<Scalar = F>, G2: Group> StepCircuit<F>
+      for HeapifyCircuit<G1, G2>
+    where
+      G1::Scalar: Ord,
+      G1: Group<Base = <G2 as Group>::Scalar>,
+      G2: Group<Base = <G1 as Group>::Scalar>,
+    {
+      fn arity(&self) -> usize {
+        7
+      }
+
+      fn synthesize<CS: ConstraintSystem<F>>(
+        &self,
+        cs: &mut CS,
+        z: &[AllocatedNum<F>],
+      ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+        let mut lookup_trace = self.lookup_trace.clone();
+        let prev_intermediate_gamma = &z[0];
+        let alpha = &z[1];
+        let gamma = &z[2];
+        let prev_R = &z[3];
+        let prev_W = &z[4];
+        let prev_rw_counter = &z[5];
+        let index = &z[6];
+
+        let left_child_index = AllocatedNum::alloc(cs.namespace(|| "left_child_index"), || {
+          index
+            .get_value()
+            .map(|i| i.mul(F::from(2)) + F::ONE)
+            .ok_or(SynthesisError::AssignmentMissing)
+        })?;
+        cs.enforce(
+          || "(2*index + 1) * 1 = left_child_index",
+          |lc| lc + (F::from(2), index.get_variable()) + CS::one(),
+          |lc| lc + CS::one(),
+          |lc| lc + left_child_index.get_variable(),
+        );
+        let right_child_index = AllocatedNum::alloc(cs.namespace(|| "right_child_index"), || {
+          left_child_index
+            .get_value()
+            .map(|i| i + F::ONE)
+            .ok_or(SynthesisError::AssignmentMissing)
+        })?;
+        cs.enforce(
+          || "(left_child_index + 1) * 1 = right_child_index",
+          |lc| lc + left_child_index.get_variable() + CS::one(),
+          |lc| lc + CS::one(),
+          |lc| lc + right_child_index.get_variable(),
+        );
+        let parent = lookup_trace.read(cs.namespace(|| "parent"), index)?;
+        let left_child = lookup_trace.read(cs.namespace(|| "left_child"), &left_child_index)?;
+        let right_child = lookup_trace.read(cs.namespace(|| "right_child"), &right_child_index)?;
+
+        let is_left_child_smaller = less_than(
+          cs.namespace(|| "left_child < parent"),
+          &left_child,
+          &parent,
+          self.max_value_bits,
+        )?;
+
+        let new_parent_left = conditionally_select2(
+          cs.namespace(|| "new_left_pair_parent"),
+          &left_child,
+          &parent,
+          &is_left_child_smaller,
+        )?;
+
+        let new_left_child = conditionally_select2(
+          cs.namespace(|| "new_left_pair_child"),
+          &parent,
+          &left_child,
+          &is_left_child_smaller,
+        )?;
+
+        lookup_trace.write(
+          cs.namespace(|| "write_left_pair_parent"),
+          index,
+          &new_parent_left,
+        )?;
+        lookup_trace.write(
+          cs.namespace(|| "write_left_pair_child"),
+          &left_child_index,
+          &new_left_child,
+        )?;
+
+        let is_right_child_smaller = less_than(
+          cs.namespace(|| "right_child < parent"),
+          &right_child,
+          &new_parent_left,
+          self.max_value_bits,
+        )?;
+
+        let new_parent_right = conditionally_select2(
+          cs.namespace(|| "new_right_pair_parent"),
+          &right_child,
+          &new_parent_left,
+          &is_right_child_smaller,
+        )?;
+        let new_right_child = conditionally_select2(
+          cs.namespace(|| "new_right_pair_child"),
+          &new_parent_left,
+          &right_child,
+          &is_right_child_smaller,
+        )?;
+        lookup_trace.write(
+          cs.namespace(|| "write_right_pair_parent"),
+          index,
+          &new_parent_right,
+        )?;
+        lookup_trace.write(
+          cs.namespace(|| "write_right_pair_child"),
+          &right_child_index,
+          &new_right_child,
+        )?;
+
+        // commit the rw change
+        let (next_R, next_W, next_rw_counter, next_intermediate_gamma) = lookup_trace
+          .commit::<G2, Namespace<'_, F, <CS as ConstraintSystem<F>>::Root>>(
+            cs.namespace(|| "commit"),
+            self.ro_consts.clone(),
+            prev_intermediate_gamma,
+            &(alpha.clone(), gamma.clone()),
+            prev_W,
+            prev_R,
+            prev_rw_counter,
+          )?;
+
+        let next_index = AllocatedNum::alloc(cs.namespace(|| "next_index"), || {
+          index
+            .get_value()
+            .map(|index| index - G1::Scalar::from(1))
+            .ok_or(SynthesisError::AssignmentMissing)
+        })?;
+        cs.enforce(
+          || "(next_index + 1) * 1 = index",
+          |lc| lc + next_index.get_variable() + CS::one(),
+          |lc| lc + CS::one(),
+          |lc| lc + index.get_variable(),
+        );
+        Ok(vec![
+          next_intermediate_gamma,
+          alpha.clone(),
+          gamma.clone(),
+          next_R,
+          next_W,
+          next_rw_counter,
+          next_index,
+        ])
+      }
+    }
+
+    let heap_size: usize = 4;
+
+    let ro_consts: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::default();
+
+    let initial_table = {
+      let mut initial_table = (0..heap_size - 1)
+        .map(|i| {
+          (
+            <G2 as Group>::Base::from(i as u64),
+            <G2 as Group>::Base::from((heap_size - 2 - i) as u64),
+          )
+        })
+        .collect::<Vec<(<G2 as Group>::Base, <G2 as Group>::Base)>>();
+      initial_table.push((
+        <G2 as Group>::Base::from(heap_size as u64 - 1),
+        <G2 as Group>::Base::ZERO,
+      )); // attach 1 dummy element to assure table size is power of 2
+      Lookup::new(heap_size * 4, TableType::ReadWrite, initial_table)
+    };
+
+    let (circuit_primaries, final_table, expected_intermediate_gamma) =
+      HeapifyCircuit::new(initial_table.clone(), ro_consts);
+
+    let circuit_secondary = TrivialCircuit::default();
+
+    // produce public parameters
+    let pp_hint1 = Some(SPrime::<G1, EE<_>>::commitment_key_floor());
+    let pp_hint2 = Some(SPrime::<G2, EE<_>>::commitment_key_floor());
+
+    let pp =
+      PublicParams::<G1, G2, HeapifyCircuit<G1, G2>, TrivialCircuit<<G2 as Group>::Scalar>>::new(
+        &circuit_primaries[0],
+        &circuit_secondary,
+        pp_hint1,
+        pp_hint2,
+      );
+
+    let z0_primary =
+      HeapifyCircuit::<G1, G2>::get_z0(&pp.ck_primary, &final_table, expected_intermediate_gamma);
+
+    // 5th is initial index.
+    // +1 for index end with 0
+    let num_steps = u32::from_le_bytes(z0_primary[5].to_repr()[0..4].try_into().unwrap()) + 1;
+
+    let z0_secondary = vec![<G2 as Group>::Scalar::ZERO; 1];
+
+    // produce a recursive SNARK
+    let mut recursive_snark: RecursiveSNARK<
+      G1,
+      G2,
+      HeapifyCircuit<G1, G2>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
+    > = RecursiveSNARK::new(
+      &pp,
+      &circuit_primaries[0],
+      &circuit_secondary,
+      z0_primary.clone(),
+      z0_secondary.clone(),
+    );
+
+    for i in 0..num_steps {
+      println!("step i {}", i);
+      let res = recursive_snark.prove_step(
+        &pp,
+        &circuit_primaries[i as usize],
+        &circuit_secondary.clone(),
+        z0_primary.clone(),
+        z0_secondary.clone(),
+      );
+      res
+        .clone()
+        .map_err(|err| println!("err {:?}", err))
+        .unwrap();
+      assert!(res.is_ok());
+    }
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(&pp, num_steps as usize, &z0_primary, &z0_secondary);
+    let (zn_primary, _) = res
+      .clone()
+      .map_err(|err| {
+        print_constraints_name_on_error_index::<G1, G2, _>(&err, &circuit_primaries[0])
+      })
+      .unwrap();
+
+    assert_eq!(<G1 as Group>::Scalar::from(1).neg(), zn_primary[6]);
+
+    let number_of_iterated_nodes = (heap_size - 4) / 2 + 1;
+    assert_eq!(
+      <G1 as Group>::Scalar::from((number_of_iterated_nodes * 7) as u64),
+      zn_primary[5]
+    ); // rw counter = number_of_iterated_nodes * (3r + 4w) operations
+
+    assert_eq!(pp.circuit_shape_primary.r1cs_shape.num_cons, 12599);
+    assert_eq!(pp.circuit_shape_primary.r1cs_shape.num_vars, 12607);
+    assert_eq!(pp.circuit_shape_secondary.r1cs_shape.num_cons, 10347);
+    assert_eq!(pp.circuit_shape_secondary.r1cs_shape.num_vars, 10329);
+
+    println!("zn_primary {:?}", zn_primary);
+
+    let intermediate_gamma = zn_primary[0];
+    let alpha = zn_primary[1];
+    let gamma = zn_primary[2];
+    let read_row = zn_primary[3];
+    let write_row = zn_primary[4];
+    assert_eq!(
+      expected_intermediate_gamma, intermediate_gamma,
+      "expected_intermediate_gamma != intermediate_gamma"
+    );
+
+    // lookup snark prove/verify
+    let (pk, vk) = LookupSNARK::<G1, EE<_>>::setup(&pp.ck_primary, &initial_table).unwrap();
+    let snark_proof = LookupSNARK::<G1, EE<_>>::prove(
+      &pp.ck_primary,
+      &pk,
+      (alpha, gamma),
+      read_row,
+      write_row,
+      &initial_table,
+      &final_table,
+    )
+    .unwrap();
+
+    let res = snark_proof.verify::<G2>(
+      &vk,
+      expected_intermediate_gamma,
+      read_row,
+      write_row,
+      (alpha, gamma),
+    );
+    let _ = res.clone().map_err(|err| println!("{:?}", err));
+    res.unwrap()
   }
 }
