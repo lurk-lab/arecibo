@@ -122,7 +122,7 @@ where
     ck: &UniversalKZGParam<E>,
     _pk: &Self::ProverKey,
     transcript: &mut <NE as NovaEngine>::TE,
-    C: &Commitment<NE>,
+    _C: &Commitment<NE>,
     hat_P: &[E::Fr],
     point: &[E::Fr],
     eval: &E::Fr,
@@ -164,8 +164,7 @@ where
         .to_affine()
     };
 
-    let kzg_open_batch = |C: &[E::G1Affine],
-                          f: &[Vec<E::Fr>],
+    let kzg_open_batch = |f: &[Vec<E::Fr>],
                           u: &[E::Fr],
                           transcript: &mut <NE as NovaEngine>::TE|
      -> (Vec<E::G1Affine>, Vec<Vec<E::Fr>>) {
@@ -194,7 +193,6 @@ where
 
       let k = f.len();
       let t = u.len();
-      assert!(C.len() == k);
 
       // The verifier needs f_i(u_j), so we compute them here
       // (V will compute B(u_j) itself)
@@ -202,7 +200,7 @@ where
       v.par_iter_mut().enumerate().for_each(|(i, v_i)| {
         // for each point u
         v_i.par_iter_mut().zip_eq(f).for_each(|(v_ij, f)| {
-          // for each poly f
+          // for each poly f (except the last one - since it is constant)
           *v_ij = UniPoly::ref_cast(f).evaluate(&u[i]);
         });
       });
@@ -216,7 +214,6 @@ where
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
       let _d_0 = Self::verifier_second_challenge(&w, transcript);
-
       (w, v)
     };
 
@@ -229,7 +226,10 @@ where
     // Phase 1  -- create commitments com_1, ..., com_\ell
     let mut polys: Vec<Vec<E::Fr>> = Vec::new();
     polys.push(hat_P.to_vec());
-    for i in 0..ell {
+
+    // We don't compute final Pi (and its commitment) as it is constant and equals to 'eval'
+    // also known to verifier, so can be derived on its side as well
+    for i in 0..x.len() - 1 {
       let Pi_len = polys[i].len() / 2;
       let mut Pi = vec![E::Fr::ZERO; Pi_len];
 
@@ -237,10 +237,6 @@ where
       Pi.par_iter_mut().enumerate().for_each(|(j, Pi_j)| {
         *Pi_j = x[ell - i - 1] * (polys[i][2 * j + 1] - polys[i][2 * j]) + polys[i][2 * j];
       });
-
-      if i == ell - 1 && *eval != Pi[0] {
-        return Err(NovaError::UnSat);
-      }
 
       polys.push(Pi);
     }
@@ -263,9 +259,8 @@ where
     let u = vec![r, -r, r * r];
 
     // Phase 3 -- create response
-    let mut com_all = comms.clone();
-    com_all.insert(0, C.comm.to_affine());
-    let (w, evals) = kzg_open_batch(&com_all, &polys, &u, transcript);
+    polys.push(vec![*eval]); // final 'Pi' polynomial is constant and equals to eval
+    let (w, evals) = kzg_open_batch(&polys, &u, transcript);
 
     Ok(EvaluationArgument { comms, w, evals })
   }
@@ -294,6 +289,7 @@ where
       let k = C.len();
       let t = u.len();
 
+      //let q = Self::get_batch_challenge_ignoring_eval(v, eval, transcript);
       let q = Self::get_batch_challenge(v, transcript);
       let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
 
@@ -380,11 +376,14 @@ where
     // we do not need to add x to the transcript, because in our context x was
     // obtained from the transcript
     let r = Self::compute_challenge(&com, transcript);
-
     if r == E::Fr::ZERO || C.comm == E::G1::identity() {
       return Err(NovaError::ProofVerifyError);
     }
     com.insert(0, C.comm.to_affine()); // set com_0 = C, shifts other commitments to the right
+
+    // compute commitment to constant eval and add it commitments vector
+    let com_to_eval = E::G1Affine::from(vk.g * (*y));
+    com.push(com_to_eval);
 
     let u = vec![r, -r, r * r];
 
@@ -474,15 +473,54 @@ mod tests {
     let point = vec![Fr::from(2), Fr::from(2)];
     let eval = Fr::from(9);
     assert!(EvaluationEngine::<E, NE>::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
+  }
 
-    // Try a couple incorrect evaluations and expect failure
-    let point = vec![Fr::from(2), Fr::from(2)];
-    let eval = Fr::from(50);
-    assert!(EvaluationEngine::<E, NE>::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_err());
+  #[test]
+  fn test_mlkzg_alternative() {
+    fn test_inner(n: usize, poly: &[Fr], point: &[Fr], eval: Fr) -> Result<(), NovaError> {
+      let ck: CommitmentKey<NE> =
+        <KZGCommitmentEngine<E> as CommitmentEngineTrait<NE>>::setup(b"test", n);
+      let (pk, vk): (KZGProverKey<E>, KZGVerifierKey<E>) = EvaluationEngine::<E, NE>::setup(&ck);
 
-    let point = vec![Fr::from(0), Fr::from(2)];
-    let eval = Fr::from(4);
-    assert!(EvaluationEngine::<E, NE>::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_err());
+      // make a commitment
+      let C = KZGCommitmentEngine::commit(&ck, poly);
+
+      // prove an evaluation
+      let mut prover_transcript = Keccak256Transcript::new(b"TestEval");
+      let proof =
+        EvaluationEngine::<E, NE>::prove(&ck, &pk, &mut prover_transcript, &C, poly, point, &eval)
+          .unwrap();
+
+      // verify the evaluation
+      let mut verifier_transcript = Keccak256Transcript::<NE>::new(b"TestEval");
+      EvaluationEngine::<E, NE>::verify(&vk, &mut verifier_transcript, &C, point, &eval, &proof)
+    }
+
+    let n = 8;
+
+    // poly = [1, 2, 1, 4, 1, 2, 1, 4]
+    let poly = vec![
+      Fr::ONE,
+      Fr::from(2),
+      Fr::from(1),
+      Fr::from(4),
+      Fr::ONE,
+      Fr::from(2),
+      Fr::from(1),
+      Fr::from(4),
+    ];
+
+    // point = [4,3,8]
+    let point = vec![Fr::from(4), Fr::from(3), Fr::from(8)];
+
+    // eval = 57
+    let eval = Fr::from(57);
+
+    assert!(test_inner(n, &poly, &point, eval).is_ok());
+
+    // wrong eval
+    let eval = Fr::from(56);
+    assert!(test_inner(n, &poly, &point, eval).is_err());
   }
 
   #[test]
@@ -541,7 +579,7 @@ mod tests {
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
-    bad_proof.comms[0] = (bad_proof.comms[0] + bad_proof.comms[1]).to_affine();
+    bad_proof.comms[0] = (bad_proof.comms[0] + bad_proof.comms[0] * Fr::from(123)).to_affine();
     let mut verifier_transcript2 = Keccak256Transcript::<NE>::new(b"TestEval");
     assert!(EvaluationEngine::<E, NE>::verify(
       &vk,
