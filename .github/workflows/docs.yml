@@ -1,0 +1,15 @@
+name: Generate and deploy crate docs
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "**.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+jobs:
+  docs:
+    uses: lurk-lab/ci-workflows/.github/workflows/docs.yml@main

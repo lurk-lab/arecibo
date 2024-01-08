@@ -10,6 +10,9 @@ updates:
       rust-dependencies:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
     open-pull-requests-limit: 5
 
   - package-ecosystem: "github-actions"

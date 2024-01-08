@@ -9,13 +9,6 @@ on:
       - 'feat/**'
       - release-candidate
 
-env:
-  CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: 0
-  CARGO_NET_RETRY: 10
-  RUSTUP_MAX_RETRIES: 10
-  RUST_BACKTRACE: short
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
@@ -26,6 +19,10 @@ jobs:
     env:
       RUSTFLAGS: -D warnings
     steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: lurk-lab/ci-workflows
+    - uses: ./.github/actions/ci-env
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
     - uses: taiki-e/install-action@nextest
@@ -44,29 +41,9 @@ jobs:
         cargo nextest run --profile ci --workspace --cargo-profile dev-ci --features "asm" -E 'test(test_pp_digest)'
 
   check-lurk-compiles:
-    if: github.event_name == 'pull_request'
-    runs-on: buildjet-8vcpu-ubuntu-2204
-    env:
-      RUSTFLAGS: -D warnings
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        path: ${{ github.workspace }}/arecibo
-    - uses: actions/checkout@v4
-      with:
-        repository: lurk-lab/lurk-rs
-        path: ${{ github.workspace }}/lurk
-        submodules: recursive
-    - uses: dtolnay/rust-toolchain@stable
-    - uses: Swatinem/rust-cache@v2
-    - name: Patch Cargo.toml
-      working-directory: ${{ github.workspace }}/lurk
-      run: |
-        echo "[patch.'https://github.com/lurk-lab/arecibo']" >> Cargo.toml
-        echo "nova = { path='../arecibo', package='arecibo' }" >> Cargo.toml
-    - name: Check Lurk-rs types don't break spectacularly
-      working-directory: ${{ github.workspace }}/lurk
-      run: cargo check --all --tests --benches --examples
+    uses: lurk-lab/ci-workflows/.github/workflows/check-lurk-compiles.yml@main
+    with:
+      runner: "buildjet-8vcpu-ubuntu-2204"
 
   # Wasm build, rustfmt, clippy, doctests, and MSRV
   code-quality:
