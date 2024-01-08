@@ -14,6 +14,9 @@ use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
 use std::time::Duration;
 
+mod common;
+use common::{noise_threshold_env, BenchParams};
+
 type E1 = PallasEngine;
 type E2 = VestaEngine;
 type EE1 = arecibo::provider::ipa_pc::EvaluationEngine<E1>;
@@ -101,8 +104,13 @@ fn bench_compressed_snark_internal<S1: RelaxedR1CSSNARKTrait<E1>, S2: RelaxedR1C
     assert!(res.is_ok());
   }
 
+  let bench_params = BenchParams {
+    step_size: num_cons,
+    sha: env!("VERGEN_GIT_SHA"),
+  };
+
   // Bench time to produce a compressed SNARK
-  group.bench_function("Prove", |b| {
+  group.bench_function(bench_params.bench_id("Prove"), |b| {
     b.iter(|| {
       assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
         black_box(&pp),
@@ -117,7 +125,7 @@ fn bench_compressed_snark_internal<S1: RelaxedR1CSSNARKTrait<E1>, S2: RelaxedR1C
   let compressed_snark = res.unwrap();
 
   // Benchmark the verification time
-  group.bench_function("Verify", |b| {
+  group.bench_function(bench_params.bench_id("Verify"), |b| {
     b.iter(|| {
       assert!(black_box(&compressed_snark)
         .verify(
@@ -148,8 +156,9 @@ fn bench_compressed_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
-    let mut group = c.benchmark_group(format!("CompressedSNARK-StepCircuitSize-{num_cons}"));
+    let mut group = c.benchmark_group("CompressedSNARK");
     group.sample_size(NUM_SAMPLES);
+    group.noise_threshold(noise_threshold_env().unwrap_or(0.05));
 
     bench_compressed_snark_internal::<S1, S2>(&mut group, num_cons);
 
@@ -172,12 +181,10 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
-    let mut group = c.benchmark_group(format!(
-      "CompressedSNARK-Commitments-StepCircuitSize-{num_cons}"
-    ));
-    group
-      .sampling_mode(SamplingMode::Flat)
-      .sample_size(NUM_SAMPLES);
+    let mut group = c.benchmark_group("CompressedSNARK-Commitments");
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(NUM_SAMPLES);
+    group.noise_threshold(noise_threshold_env().unwrap_or(0.05));
 
     bench_compressed_snark_internal::<SS1, SS2>(&mut group, num_cons);
 

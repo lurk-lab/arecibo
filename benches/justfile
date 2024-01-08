@@ -1,0 +1,36 @@
+# Install with `cargo install just`
+# Usage: `just <bench|gpu-bench|gpu-bench-ci> <args>`
+set dotenv-load
+set dotenv-filename := "bench.env"
+set ignore-comments := true
+
+commit := `git rev-parse HEAD`
+
+# Run CPU benchmarks
+bench +benches:
+  #!/bin/sh
+  for bench in {{benches}}; do
+    cargo criterion --bench $bench
+  done
+
+gpu-env: 
+  # The `compute`/`sm` number corresponds to the Nvidia GPU architecture
+  # In this case, the self-hosted machine uses the Ampere architecture, but we want this to be configurable
+  # See https://arnon.dk/matching-sm-architectures-arch-and-gencode-for-various-nvidia-cards/
+  export CUDA_ARCH := `nvidia-smi --query-gpu=compute_cap --format=csv,noheader | sed 's/\.//g'`
+  export EC_GPU_CUDA_NVCC_ARGS := "--fatbin --gpu-architecture=sm_$CUDA_ARCH --generate-code=arch=compute_$CUDA_ARCH,code=sm_$CUDA_ARCH"
+  export EC_GPU_FRAMEWORK := "cuda"
+
+# Run CUDA benchmarks on GPU
+gpu-bench +benches: gpu-env
+  #!/bin/sh
+  for bench in {{benches}}; do
+    cargo criterion --bench $bench --features "cuda"
+  done
+
+# Run CUDA benchmarks on GPU, tuned for CI
+gpu-bench-ci +benches:
+  #!/bin/sh
+  for bench in {{benches}}; do
+    cargo criterion --bench $bench --features "cuda" --message-format=json > "$bench-{{commit}}".json
+  done

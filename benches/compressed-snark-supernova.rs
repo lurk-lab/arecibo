@@ -11,14 +11,17 @@ use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
 use std::time::Duration;
 
+mod common;
+use common::{noise_threshold_env, BenchParams};
+
 type E1 = arecibo::provider::PallasEngine;
 type E2 = arecibo::provider::VestaEngine;
 type EE1 = arecibo::provider::ipa_pc::EvaluationEngine<E1>;
 type EE2 = arecibo::provider::ipa_pc::EvaluationEngine<E2>;
-// SNARKs without computation commitmnets
+// SNARKs without computation commitments
 type S1 = arecibo::spartan::batched::BatchedRelaxedR1CSSNARK<E1, EE1>;
 type S2 = arecibo::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
-// SNARKs with computation commitmnets
+// SNARKs with computation commitments
 type SS1 = arecibo::spartan::batched_ppsnark::BatchedRelaxedR1CSSNARK<E1, EE1>;
 type SS2 = arecibo::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>;
 
@@ -162,8 +165,13 @@ fn bench_compressed_snark_internal_with_arity<
 
   let (prover_key, verifier_key) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
 
+  let bench_params = BenchParams {
+    step_size: num_cons,
+    sha: env!("VERGEN_GIT_SHA"),
+  };
+
   // Benchmark the prove time
-  group.bench_function("Prove", |b| {
+  group.bench_function(bench_params.bench_id("Prove"), |b| {
     b.iter(|| {
       assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
         black_box(&pp),
@@ -180,7 +188,7 @@ fn bench_compressed_snark_internal_with_arity<
   let compressed_snark = res.unwrap();
 
   // Benchmark the verification time
-  group.bench_function("Verify", |b| {
+  group.bench_function(bench_params.bench_id("Verify"), |b| {
     b.iter(|| {
       assert!(black_box(&compressed_snark)
         .verify(
@@ -211,10 +219,9 @@ fn bench_one_augmented_circuit_compressed_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
-    let mut group = c.benchmark_group(format!(
-      "CompressedSNARKSuperNova-1circuit-StepCircuitSize-{num_cons}"
-    ));
+    let mut group = c.benchmark_group("CompressedSNARKSuperNova-1circuit");
     group.sample_size(NUM_SAMPLES);
+    group.noise_threshold(noise_threshold_env().unwrap_or(0.05));
 
     bench_compressed_snark_internal_with_arity::<S1, S2>(&mut group, 1, num_cons);
 
@@ -239,10 +246,9 @@ fn bench_two_augmented_circuit_compressed_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
-    let mut group = c.benchmark_group(format!(
-      "CompressedSNARKSuperNova-2circuit-StepCircuitSize-{num_cons}"
-    ));
+    let mut group = c.benchmark_group("CompressedSNARKSuperNova-2circuit");
     group.sample_size(NUM_SAMPLES);
+    group.noise_threshold(noise_threshold_env().unwrap_or(0.05));
 
     bench_compressed_snark_internal_with_arity::<S1, S2>(&mut group, 2, num_cons);
 
@@ -267,10 +273,9 @@ fn bench_two_augmented_circuit_compressed_snark_with_computational_commitments(c
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
-    let mut group = c.benchmark_group(format!(
-      "CompressedSNARKSuperNova-Commitments-2circuit-StepCircuitSize-{num_cons}"
-    ));
+    let mut group = c.benchmark_group("CompressedSNARKSuperNova-Commitments-2circuit");
     group.sample_size(NUM_SAMPLES);
+    group.noise_threshold(noise_threshold_env().unwrap_or(0.05));
 
     bench_compressed_snark_internal_with_arity::<SS1, SS2>(&mut group, 2, num_cons);
 

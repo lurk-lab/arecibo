@@ -12,6 +12,9 @@ use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
 use std::time::Duration;
 
+mod common;
+use common::{noise_threshold_env, BenchParams};
+
 // To run these benchmarks, first download `criterion` with `cargo install cargo-criterion`.
 // Then `cargo criterion --bench recursive-snark-supernova`. The results are located in `target/criterion/data/<name-of-benchmark>`.
 // For flamegraphs, run `cargo criterion --bench recursive-snark-supernova --features flamegraph -- --profile-time <secs>`.
@@ -152,8 +155,13 @@ fn bench_recursive_snark_internal_with_arity(
   assert!(recursive_snark_option.is_some());
   let recursive_snark = recursive_snark_option.unwrap();
 
+  let bench_params = BenchParams {
+    step_size: num_cons,
+    sha: env!("VERGEN_GIT_SHA"),
+  };
+
   // Benchmark the prove time
-  group.bench_function("Prove", |b| {
+  group.bench_function(bench_params.bench_id("Prove"), |b| {
     b.iter(|| {
       // produce a recursive SNARK for a step of the recursion
       assert!(black_box(&mut recursive_snark.clone())
@@ -167,7 +175,7 @@ fn bench_recursive_snark_internal_with_arity(
   });
 
   // Benchmark the verification time
-  group.bench_function("Verify", |b| {
+  group.bench_function(bench_params.bench_id("Verify"), |b| {
     b.iter(|| {
       assert!(black_box(&mut recursive_snark.clone())
         .verify(
@@ -197,10 +205,9 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
-    let mut group = c.benchmark_group(format!(
-      "RecursiveSNARKSuperNova-1circuit-StepCircuitSize-{num_cons}"
-    ));
+    let mut group = c.benchmark_group("RecursiveSNARKSuperNova-1circuit");
     group.sample_size(NUM_SAMPLES);
+    group.noise_threshold(noise_threshold_env().unwrap_or(0.05));
 
     bench_recursive_snark_internal_with_arity(&mut group, 1, num_cons);
     group.finish();
@@ -224,10 +231,9 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
-    let mut group = c.benchmark_group(format!(
-      "RecursiveSNARKSuperNova-2circuit-StepCircuitSize-{num_cons}"
-    ));
+    let mut group = c.benchmark_group("RecursiveSNARKSuperNova-2circuit");
     group.sample_size(NUM_SAMPLES);
+    group.noise_threshold(noise_threshold_env().unwrap_or(0.05));
 
     bench_recursive_snark_internal_with_arity(&mut group, 2, num_cons);
     group.finish();

@@ -73,6 +73,10 @@ hex = "0.4.3"
 sha2 = "0.10.7"
 tracing-test = "0.2.4"
 expect-test = "1.4.1"
+anyhow = "1.0.72"
+
+[build-dependencies]
+vergen = { version = "8", features = ["build", "git", "gitcl"] }
 
 [[bench]]
 name = "recursive-snark"

@@ -14,6 +14,9 @@ use criterion::*;
 use ff::PrimeField;
 use std::time::Duration;
 
+mod common;
+use common::{noise_threshold_env, BenchParams};
+
 type E1 = PallasEngine;
 type E2 = VestaEngine;
 type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
@@ -62,8 +65,9 @@ fn bench_recursive_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
-    let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{num_cons}"));
+    let mut group = c.benchmark_group("RecursiveSNARK");
     group.sample_size(NUM_SAMPLES);
+    group.noise_threshold(noise_threshold_env().unwrap_or(0.05));
 
     let c_primary = NonTrivialCircuit::new(num_cons);
     let c_secondary = TrivialCircuit::default();
@@ -104,7 +108,12 @@ fn bench_recursive_snark(c: &mut Criterion) {
       assert!(res.is_ok());
     }
 
-    group.bench_function("Prove", |b| {
+    let bench_params = BenchParams {
+      step_size: num_cons,
+      sha: env!("VERGEN_GIT_SHA"),
+    };
+
+    group.bench_function(bench_params.bench_id("Prove"), |b| {
       b.iter(|| {
         // produce a recursive SNARK for a step of the recursion
         assert!(black_box(&mut recursive_snark.clone())
@@ -118,7 +127,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
     });
 
     // Benchmark the verification time
-    group.bench_function("Verify", |b| {
+    group.bench_function(bench_params.bench_id("Verify"), |b| {
       b.iter(|| {
         assert!(black_box(&recursive_snark)
           .verify(
