@@ -126,56 +126,6 @@ impl<E: Engine> SumcheckProof<E> {
       )
   }
 
-  pub fn prove_quad<F>(
-    claim: &E::Scalar,
-    num_rounds: usize,
-    poly_A: &mut MultilinearPolynomial<E::Scalar>,
-    poly_B: &mut MultilinearPolynomial<E::Scalar>,
-    comb_func: F,
-    transcript: &mut E::TE,
-  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError>
-  where
-    F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
-  {
-    let mut r: Vec<E::Scalar> = Vec::new();
-    let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
-    let mut claim_per_round = *claim;
-    for _ in 0..num_rounds {
-      let poly = {
-        let (eval_point_0, eval_point_2) =
-          Self::compute_eval_points_quad(poly_A, poly_B, &comb_func);
-
-        let evals = vec![eval_point_0, claim_per_round - eval_point_0, eval_point_2];
-        UniPoly::from_evals(&evals)
-      };
-
-      // append the prover's message to the transcript
-      transcript.absorb(b"p", &poly);
-
-      //derive the verifier's challenge for the next round
-      let r_i = transcript.squeeze(b"c")?;
-      r.push(r_i);
-      polys.push(poly.compress());
-
-      // Set up next round
-      claim_per_round = poly.evaluate(&r_i);
-
-      // bind all tables to the verifier's challenge
-      rayon::join(
-        || poly_A.bind_poly_var_top(&r_i),
-        || poly_B.bind_poly_var_top(&r_i),
-      );
-    }
-
-    Ok((
-      Self {
-        compressed_polys: polys,
-      },
-      r,
-      vec![poly_A[0], poly_B[0]],
-    ))
-  }
-
   pub fn prove_quad_batch<F>(
     claims: &[E::Scalar],
     num_rounds: &[usize],
@@ -399,77 +349,6 @@ impl<E: Engine> SumcheckProof<E> {
         || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
         |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
       )
-  }
-
-  pub fn prove_cubic_with_additive_term<F>(
-    claim: &E::Scalar,
-    num_rounds: usize,
-    poly_A: &mut MultilinearPolynomial<E::Scalar>,
-    poly_B: &mut MultilinearPolynomial<E::Scalar>,
-    poly_C: &mut MultilinearPolynomial<E::Scalar>,
-    poly_D: &mut MultilinearPolynomial<E::Scalar>,
-    comb_func: F,
-    transcript: &mut E::TE,
-  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError>
-  where
-    F: Fn(&E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
-  {
-    let mut r: Vec<E::Scalar> = Vec::new();
-    let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
-    let mut claim_per_round = *claim;
-
-    for _ in 0..num_rounds {
-      let poly = {
-        // Make an iterator returning the contributions to the evaluations
-        let (eval_point_0, eval_point_2, eval_point_3) =
-          Self::compute_eval_points_cubic_with_additive_term(
-            poly_A, poly_B, poly_C, poly_D, &comb_func,
-          );
-
-        let evals = vec![
-          eval_point_0,
-          claim_per_round - eval_point_0,
-          eval_point_2,
-          eval_point_3,
-        ];
-        UniPoly::from_evals(&evals)
-      };
-
-      // append the prover's message to the transcript
-      transcript.absorb(b"p", &poly);
-
-      //derive the verifier's challenge for the next round
-      let r_i = transcript.squeeze(b"c")?;
-      r.push(r_i);
-      polys.push(poly.compress());
-
-      // Set up next round
-      claim_per_round = poly.evaluate(&r_i);
-
-      // bound all tables to the verifier's challenge
-      rayon::join(
-        || {
-          rayon::join(
-            || poly_A.bind_poly_var_top(&r_i),
-            || poly_B.bind_poly_var_top(&r_i),
-          )
-        },
-        || {
-          rayon::join(
-            || poly_C.bind_poly_var_top(&r_i),
-            || poly_D.bind_poly_var_top(&r_i),
-          )
-        },
-      );
-    }
-
-    Ok((
-      Self {
-        compressed_polys: polys,
-      },
-      r,
-      vec![poly_A[0], poly_B[0], poly_C[0], poly_D[0]],
-    ))
   }
 
   pub fn prove_cubic_with_additive_term_batch<F>(

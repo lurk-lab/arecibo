@@ -53,13 +53,6 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   pub fn coordinates(self) -> Vec<Scalar> {
     self.eq.r
   }
-
-  /// Evaluates the `PowPolynomial` at all the `2^|t_pow|` points in its domain.
-  ///
-  /// Returns a vector of Scalars, each corresponding to the polynomial evaluation at a specific point.
-  pub fn evals(&self) -> Vec<Scalar> {
-    self.eq.evals()
-  }
 }
 
 impl<Scalar: PrimeField> From<PowPolynomial<Scalar>> for EqPolynomial<Scalar> {
