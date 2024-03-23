@@ -16,8 +16,8 @@ use halo2curves::bn256::Bn256;
 
 pub type E1 = arecibo::provider::Bn256EngineKZG;
 pub type E2 = arecibo::provider::GrumpkinEngine;
-pub type EE1 = arecibo::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
-pub type EE2 = arecibo::provider::ipa_pc::EvaluationEngine<E2>;
+pub type EE1 = arecibo::provider::pcs::hyperkzg::EvaluationEngine<Bn256, E1>;
+pub type EE2 = arecibo::provider::pcs::ipa_pc::EvaluationEngine<E2>;
 // SNARKs without computation commitments
 pub type S1 = arecibo::spartan::batched::BatchedRelaxedR1CSSNARK<E1, EE1>;
 pub type S2 = arecibo::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;

@@ -1,19 +1,14 @@
 //! This module implements Nova's traits using the following several different combinations
 
-// public modules to be used as an evaluation engine with Spartan
-pub mod hyperkzg;
-pub mod ipa_pc;
-pub mod non_hiding_zeromorph;
+/// Schemes used as an evaluation engine (including non-hiding variants) with Spartan
+pub mod pcs;
 
 // crate-public modules, made crate-public mostly for tests
 pub(crate) mod bn256_grumpkin;
 mod pasta;
-mod pedersen;
 pub(crate) mod poseidon;
 pub(crate) mod secp_secq;
 pub(crate) mod traits;
-// a non-hiding variant of {kzg, zeromorph}
-mod kzg_commitment;
 pub(crate) mod util;
 
 // crate-private modules
@@ -24,7 +19,6 @@ use crate::{
   provider::{
     bn256_grumpkin::{bn256, grumpkin},
     keccak::Keccak256Transcript,
-    pedersen::CommitmentEngine as PedersenCommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
     secp_secq::{secp256k1, secq256k1},
   },
@@ -33,7 +27,8 @@ use crate::{
 use halo2curves::bn256::Bn256;
 use pasta_curves::{pallas, vesta};
 
-use self::kzg_commitment::KZGCommitmentEngine;
+use pcs::kzg10_utilities::KZGCommitmentEngine;
+use pcs::pedersen::CommitmentEngine as PedersenCommitmentEngine;
 
 /// An implementation of the Nova `Engine` trait with Grumpkin curve and Pedersen commitment scheme
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

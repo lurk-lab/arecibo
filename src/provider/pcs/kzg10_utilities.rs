@@ -1,26 +1,30 @@
 //! Commitment engine for KZG commitments
 //!
 
+use std::borrow::Borrow;
 use std::marker::PhantomData;
 
 use abomonation_derive::Abomonation;
 use ff::{Field, PrimeField, PrimeFieldBits};
 use group::{prime::PrimeCurveAffine, Curve, Group as _};
-use pairing::Engine;
+use pairing::{Engine, MultiMillerLoop};
 use rand::rngs::StdRng;
 use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::provider::pedersen::Commitment;
+use crate::errors::PCSError;
+use crate::provider::pcs::pedersen::Commitment;
 use crate::provider::traits::DlogGroup;
 use crate::provider::util::fb_msm;
+use crate::spartan::polys::univariate::UniPoly;
 use crate::{
   digest::SimpleDigestible,
   traits::{
     commitment::{CommitmentEngineTrait, Len},
     Engine as NovaEngine, Group, TranscriptReprTrait,
   },
+  NovaError,
 };
 
 /// `UniversalParams` are the universal parameters for the KZG10 scheme.
@@ -88,7 +92,7 @@ impl<E: Engine> KZGProverKey<E> {
     }
   }
 
-  pub fn powers_of_g(&self) -> &[E::G1Affine] {
+  pub(in crate::provider) fn powers_of_g(&self) -> &[E::G1Affine] {
     &self.uv_params.powers_of_g[self.offset..self.offset + self.supported_size]
   }
 }
@@ -269,5 +273,94 @@ where
     Self {
       comm: c.0.to_curve(),
     }
+  }
+}
+
+/// Polynomial Evaluation
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct UVKZGEvaluation<E: Engine>(pub E::Fr);
+
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+
+/// KZG10 polynomial opening at some point
+pub struct UVKZGOpening<E: Engine> {
+  /// KZG10 opening represented as an affine point
+  pub opening: E::G1Affine,
+}
+
+/// Polynomial and its associated types
+pub type UVKZGPoly<F> = UniPoly<F>;
+
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+/// KZG Polynomial Commitment Scheme on univariate polynomial.
+/// Note: this is non-hiding, which is why we will implement traits on this token struct,
+/// as we expect to have several impls for the trait pegged on the same instance of a pairing::Engine.
+#[allow(clippy::upper_case_acronyms)]
+pub struct UVKZGPCS<E> {
+  #[doc(hidden)]
+  phantom: PhantomData<E>,
+}
+
+impl<E: MultiMillerLoop> UVKZGPCS<E>
+where
+  E::G1: DlogGroup<AffineExt = E::G1Affine, ScalarExt = E::Fr>,
+{
+  pub(crate) fn commit_offset(
+    prover_param: impl Borrow<KZGProverKey<E>>,
+    poly: &UVKZGPoly<E::Fr>,
+    offset: usize,
+  ) -> Result<UVKZGCommitment<E>, NovaError> {
+    let prover_param = prover_param.borrow();
+
+    if poly.degree() > prover_param.powers_of_g().len() {
+      return Err(NovaError::PCSError(PCSError::LengthError));
+    }
+
+    let scalars = poly.coeffs.as_slice();
+    let bases = prover_param.powers_of_g();
+
+    // We can avoid some scalar multiplications if 'scalars' contains a lot of leading zeroes using
+    // offset, that points where non-zero scalars start.
+    let C = <E::G1 as DlogGroup>::vartime_multiscalar_mul(
+      &scalars[offset..],
+      &bases[offset..scalars.len()],
+    );
+
+    Ok(UVKZGCommitment(C.to_affine()))
+  }
+
+  /// Generate a commitment for a polynomial
+  /// Note that the scheme is not hiding
+  pub fn commit(
+    prover_param: impl Borrow<KZGProverKey<E>>,
+    poly: &UVKZGPoly<E::Fr>,
+  ) -> Result<UVKZGCommitment<E>, NovaError> {
+    let prover_param = prover_param.borrow();
+
+    if poly.degree() > prover_param.powers_of_g().len() {
+      return Err(NovaError::PCSError(PCSError::LengthError));
+    }
+    let C = <E::G1 as DlogGroup>::vartime_multiscalar_mul(
+      poly.coeffs.as_slice(),
+      &prover_param.powers_of_g()[..poly.coeffs.len()],
+    );
+    Ok(UVKZGCommitment(C.to_affine()))
+  }
+
+  /// Vanilla KZG10 opening algorithm
+  pub fn open(
+    prover_param: impl Borrow<KZGProverKey<E>>,
+    polynomial: &UVKZGPoly<E::Fr>,
+    point: &E::Fr,
+  ) -> Result<UVKZGOpening<E>, NovaError> {
+    let prover_param = prover_param.borrow();
+    let witness_polynomial = polynomial.divide_minus_u(*point);
+    let opening = <E::G1 as DlogGroup>::vartime_multiscalar_mul(
+      witness_polynomial.coeffs.as_slice(),
+      &prover_param.powers_of_g()[..witness_polynomial.coeffs.len()],
+    )
+    .to_affine();
+
+    Ok(UVKZGOpening { opening })
   }
 }

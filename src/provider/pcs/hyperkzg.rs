@@ -9,11 +9,12 @@
 //! Compared to pure HyperKZG, this optimisation in theory improves prover (at cost of using 1 fixed KZG opening) and verifier (at cost of eliminating MSM)
 //!
 #![allow(non_snake_case)]
+use crate::provider::pcs::kzg10_utilities::UVKZGPCS;
 use crate::{
   errors::NovaError,
   provider::{
-    kzg_commitment::{KZGCommitmentEngine, KZGProverKey, KZGVerifierKey, UniversalKZGParam},
-    pedersen::Commitment,
+    pcs::kzg10_utilities::{KZGCommitmentEngine, KZGProverKey, KZGVerifierKey, UniversalKZGParam},
+    pcs::pedersen::Commitment,
     traits::DlogGroup,
     util::iterators::IndexedParallelIteratorExt as _,
   },
@@ -196,7 +197,7 @@ where
 
   fn prove(
     ck: &UniversalKZGParam<E>,
-    _pk: &Self::ProverKey,
+    pk: &Self::ProverKey,
     transcript: &mut <NE as NovaEngine>::TE,
     _C: &Commitment<NE>,
     hat_P: &[E::Fr],
@@ -237,18 +238,14 @@ where
     // K(x) = P(x) - Q(x) * D(a) - R(a), note that R(a) should be subtracted from a free term of polynomial
     let K_x = Self::compute_k_polynomial(&batched_Pi, &Q_x, &D, &R_x, a);
 
-    // TODO: since this is a usual KZG10 we should use it as utility instead
-    let h = K_x.divide_minus_u(a);
-    let C_H = <NE::CE as CommitmentEngineTrait<NE>>::commit(ck, &h.coeffs)
-      .comm
-      .to_affine();
+    let C_H = UVKZGPCS::<E>::open(pk, &K_x, &a).unwrap();
 
     Ok(EvaluationArgument::<E> {
       comms,
       evals,
       R_x: R_x.coeffs,
       C_Q,
-      C_H,
+      C_H: C_H.opening,
     })
   }
 

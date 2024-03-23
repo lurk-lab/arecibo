@@ -282,11 +282,12 @@ fn field_as_usize<F: PrimeField>(x: F) -> usize {
 mod test {
   use super::*;
   use crate::{
-    provider::{ipa_pc, Bn256EngineIPA, PallasEngine, Secp256k1Engine},
+    provider::{Bn256EngineIPA, PallasEngine, Secp256k1Engine},
     spartan::{batched, batched_ppsnark, snark::RelaxedR1CSSNARK},
     supernova::{circuit::TrivialSecondaryCircuit, NonUniformCircuit, StepCircuit},
   };
 
+  use crate::provider::pcs::ipa_pc;
   use abomonation::Abomonation;
   use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};

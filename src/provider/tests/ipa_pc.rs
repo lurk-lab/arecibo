@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-  use crate::provider::ipa_pc::EvaluationEngine;
+  use crate::provider::pcs::ipa_pc::EvaluationEngine;
   use crate::provider::tests::solidity_compatibility_utils::{
     compressed_commitment_to_json, ec_points_to_json, field_elements_to_json,
     generate_pcs_solidity_unit_test_data,
@@ -9,7 +9,7 @@ mod test {
   use crate::provider::GrumpkinEngine;
   use group::Curve;
 
-  use crate::provider::pedersen::{CommitmentKey, CommitmentKeyExtTrait};
+  use crate::provider::pcs::pedersen::{CommitmentKey, CommitmentKeyExtTrait};
   use handlebars::Handlebars;
   use serde_json::json;
   use serde_json::{Map, Value};
