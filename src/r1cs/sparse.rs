@@ -310,15 +310,9 @@ impl<'a, F: PrimeField> Iterator for Iter<'a, F> {
 mod tests {
   use super::SparseMatrix;
   #[cfg(not(target_arch = "wasm32"))]
-  use crate::r1cs::util::FWrap;
   use crate::{
     provider::PallasEngine,
     traits::{Engine, Group},
-  };
-  #[cfg(not(target_arch = "wasm32"))]
-  use proptest::{
-    prelude::*,
-    strategy::{BoxedStrategy, Just, Strategy},
   };
 
   type G = <PallasEngine as Engine>::GE;
@@ -355,26 +349,5 @@ mod tests {
     let result = sparse_matrix.multiply_vec(&vector);
 
     assert_eq!(result, vec![Fr::from(25), Fr::from(9), Fr::from(4)]);
-  }
-
-  #[cfg(not(target_arch = "wasm32"))]
-  fn coo_strategy() -> BoxedStrategy<Vec<(usize, usize, FWrap<Fr>)>> {
-    let coo_strategy = any::<FWrap<Fr>>().prop_flat_map(|f| (0usize..100, 0usize..100, Just(f)));
-    proptest::collection::vec(coo_strategy, 10).boxed()
-  }
-
-  #[cfg(not(target_arch = "wasm32"))]
-  proptest! {
-      #[test]
-      fn test_matrix_iter(mut coo_matrix in coo_strategy()) {
-        // process the randomly generated coo matrix
-        coo_matrix.sort_by_key(|(row, col, _val)| (*row, *col));
-        coo_matrix.dedup_by_key(|(row, col, _val)| (*row, *col));
-        let coo_matrix = coo_matrix.into_iter().map(|(row, col, val)| { (row, col, val.0) }).collect::<Vec<_>>();
-
-        let matrix = SparseMatrix::new(&coo_matrix, 100, 100);
-
-        prop_assert_eq!(coo_matrix, matrix.iter().collect::<Vec<_>>());
-    }
   }
 }

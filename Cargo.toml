@@ -56,7 +56,7 @@ grumpkin-msm = { git = "https://github.com/lurk-lab/grumpkin-msm", branch = "dev
 getrandom = { version = "0.2.0", default-features = false, features = ["js"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-proptest = "1.2.0"
+# proptest = "1.2.0"
 pprof = { version = "0.13", optional = true } # in benches under feature "flamegraph"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

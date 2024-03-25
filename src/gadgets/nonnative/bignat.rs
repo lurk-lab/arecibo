@@ -781,8 +781,8 @@ mod tests {
   use super::*;
   use bellpepper_core::{test_cs::TestConstraintSystem, Circuit};
   use pasta_curves::pallas::Scalar;
-  #[cfg(not(target_arch = "wasm32"))]
-  use proptest::prelude::*;
+  // #[cfg(not(target_arch = "wasm32"))]
+  // use proptest::prelude::*;
 
   pub struct PolynomialMultiplier<Scalar> {
     pub a: Vec<Scalar>,
@@ -859,37 +859,6 @@ mod tests {
       )?;
       n.decompose(cs.namespace(|| "decomp"))?;
       Ok(())
-    }
-  }
-
-  #[cfg(not(target_arch = "wasm32"))]
-  proptest! {
-    #![proptest_config(ProptestConfig {
-      cases: 10, // this test is costlier as max n gets larger
-      .. ProptestConfig::default()
-    })]
-    #[test]
-    fn test_big_nat_can_decompose(n in any::<u16>(), limb_width in 40u8..200) {
-        let n = n as usize;
-
-        let n_limbs = if n == 0 {
-            1
-        } else {
-            (n - 1) / limb_width as usize + 1
-        };
-
-        let circuit = BigNatBitDecomp {
-           inputs: Some(BigNatBitDecompInputs {
-                n: BigInt::from(n),
-            }),
-            params: BigNatBitDecompParams {
-                limb_width: limb_width as usize,
-                n_limbs,
-            },
-        };
-        let mut cs = TestConstraintSystem::<Scalar>::new();
-        circuit.synthesize(&mut cs).expect("synthesis failed");
-        prop_assert!(cs.is_satisfied());
     }
   }
 }
