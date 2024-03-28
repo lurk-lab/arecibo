@@ -46,11 +46,13 @@ ref-cast = "1.0.20" # allocation-less conversion in multilinear polys
 derive_more = "0.99.17" # lightens impl macros for pasta
 static_assertions = "1.1.0"
 rayon-scan = "0.1.0"
+camino = "1.1.6"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 # grumpkin-msm has been patched to support MSMs for the pasta curve cycle
 # see: https://github.com/lurk-lab/grumpkin-msm/pull/3
 grumpkin-msm = { git = "https://github.com/lurk-lab/grumpkin-msm", branch = "dev" }
+home = "0.5.9"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.0", default-features = false, features = ["js"] }

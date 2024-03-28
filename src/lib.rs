@@ -18,19 +18,17 @@ mod nifs;
 
 // public modules
 pub mod constants;
+pub mod cyclefold;
+pub mod data;
 pub mod errors;
 pub mod gadgets;
 pub mod provider;
 pub mod r1cs;
 pub mod spartan;
+pub mod supernova;
 pub mod traits;
 
-pub mod cyclefold;
-pub mod supernova;
-
-use once_cell::sync::OnceCell;
-use traits::{CurveCycleEquipped, Dual};
-
+use crate::data::{write_arecibo_data, write_data};
 use crate::digest::{DigestComputer, SimpleDigestible};
 use crate::{
   bellpepper::{
@@ -49,6 +47,7 @@ use errors::NovaError;
 use ff::{Field, PrimeField};
 use gadgets::scalar_as_base;
 use nifs::NIFS;
+use once_cell::sync::OnceCell;
 use r1cs::{
   CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
@@ -60,6 +59,7 @@ use traits::{
   snark::RelaxedR1CSSNARKTrait,
   AbsorbInROTrait, Engine, ROConstants, ROConstantsCircuit, ROTrait,
 };
+use traits::{CurveCycleEquipped, Dual};
 
 /// A type that holds parameters for the primary and secondary circuits of Nova and SuperNova
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Abomonation)]
@@ -490,6 +490,12 @@ where
       T: r1cs::default_T::<Dual<E1>>(r1cs_secondary.num_cons),
     };
 
+    if write_data() {
+      write_arecibo_data(format!("sparse_matrices_{:?}", pp.digest()), "A", &r1cs_primary.A);
+      write_arecibo_data(format!("sparse_matrices_{:?}", pp.digest()), "B", &r1cs_primary.B);
+      write_arecibo_data(format!("sparse_matrices_{:?}", pp.digest()), "C", &r1cs_primary.C);
+    }
+
     Ok(Self {
       z0_primary: z0_primary.to_vec(),
       z0_secondary: z0_secondary.to_vec(),
@@ -502,6 +508,7 @@ where
 
       buffer_primary,
       buffer_secondary,
+
       i: 0,
       zi_primary,
       zi_secondary,
@@ -593,6 +600,21 @@ where
       &mut self.buffer_primary.ABC_Z_1,
       &mut self.buffer_primary.ABC_Z_2,
     )?;
+
+    if write_data() {
+      let W = l_w_primary.W;
+      write_arecibo_data(
+        format!("witness_{:?}", pp.digest()),
+        format!("len_{}", W.len()),
+        &W,
+      );
+      let T = &self.buffer_primary.T;
+      write_arecibo_data(
+        format!("cross_term_{:?}", pp.digest()),
+        format!("len_{}", T.len()),
+        &T,
+      );
+    }
 
     let mut cs_secondary = SatisfyingAssignment::<Dual<E1>>::with_capacity(
       pp.circuit_shape_secondary.r1cs_shape.num_io + 1,

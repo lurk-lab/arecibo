@@ -52,7 +52,7 @@ pub struct R1CSResult<E: Engine> {
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSWitness<E: Engine> {
-  W: Vec<E::Scalar>,
+  pub(crate) W: Vec<E::Scalar>,
 }
 
 /// A type that holds an R1CS instance
