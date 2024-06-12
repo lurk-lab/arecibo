@@ -51,6 +51,7 @@ rayon-scan = "0.1.0"
 # grumpkin-msm has been patched to support MSMs for the pasta curve cycle
 # see: https://github.com/lurk-lab/grumpkin-msm/pull/3
 grumpkin-msm = { git = "https://github.com/lurk-lab/grumpkin-msm", branch = "dev" }
+ingonyama-grumpkin-msm = { git = "https://github.com/lurk-lab/ingonyama-grumpkin-msm", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.0", default-features = false, features = ["js"] }
@@ -116,7 +117,7 @@ abomonate = []
 asm = ["halo2curves/asm"]
 # Compiles in portable mode, w/o ISA extensions => binary can be executed on all systems.
 portable = ["grumpkin-msm/portable"]
-cuda = ["grumpkin-msm/cuda"]
+cuda = ["grumpkin-msm/cuda", "ingonyama-grumpkin-msm"]
 flamegraph = ["pprof/flamegraph", "pprof/criterion"]
 
 [profile.dev-ci]
