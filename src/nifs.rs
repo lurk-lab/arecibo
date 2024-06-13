@@ -126,7 +126,7 @@ impl<E: Engine> NIFS<E> {
     U2.absorb_in_ro(&mut ro);
 
     // compute a commitment to the cross-term
-    let comm_T = S.commit_T_into(ck, U1, W1, U2, W2, T, ABC_Z_1, ABC_Z_2)?;
+    let comm_T = S.commit_T_into(ck, pp_digest, U1, W1, U2, W2, T, ABC_Z_1, ABC_Z_2)?;
 
     // append `comm_T` to the transcript and obtain a challenge
     comm_T.absorb_in_ro(&mut ro);

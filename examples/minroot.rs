@@ -195,6 +195,8 @@ fn main() {
     .with(EnvFilter::from_default_env())
     .with(TeXRayLayer::new());
   tracing::subscriber::set_global_default(subscriber).unwrap();
+  arecibo::data::set_write_data(true);
+
   type C1 = MinRootCircuit<<Bn256EngineKZG as Engine>::GE>;
 
   println!("Nova-based VDF with MinRoot delay function");

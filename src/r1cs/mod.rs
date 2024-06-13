@@ -4,6 +4,7 @@ pub(crate) mod util;
 
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  data::{witness_size, write_arecibo_data, write_data},
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
   gadgets::{f_to_nat, nat_to_limbs, scalar_as_base},
@@ -52,7 +53,7 @@ pub struct R1CSResult<E: Engine> {
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSWitness<E: Engine> {
-  W: Vec<E::Scalar>,
+  pub(crate) W: Vec<E::Scalar>,
 }
 
 /// A type that holds an R1CS instance
@@ -465,6 +466,7 @@ impl<E: Engine> R1CSShape<E> {
   pub fn commit_T_into(
     &self,
     ck: &CommitmentKey<E>,
+    pp_digest: &E::Scalar,
     U1: &RelaxedR1CSInstance<E>,
     W1: &RelaxedR1CSWitness<E>,
     U2: &R1CSInstance<E>,
@@ -473,6 +475,11 @@ impl<E: Engine> R1CSShape<E> {
     ABC_Z_1: &mut R1CSResult<E>,
     ABC_Z_2: &mut R1CSResult<E>,
   ) -> Result<Commitment<E>, NovaError> {
+    if write_data() && self.A.num_cols() == witness_size() {
+      let witness = [&W1.W[..], &[U1.u], &U1.X[..]].concat();
+      write_arecibo_data(format!("witness_{:?}", pp_digest), "", &witness);
+    }
+
     tracing::info_span!("AZ_1, BZ_1, CZ_1")
       .in_scope(|| self.multiply_witness_into(&W1.W, &U1.u, &U1.X, ABC_Z_1))?;
 
@@ -481,6 +488,12 @@ impl<E: Engine> R1CSShape<E> {
       BZ: BZ_1,
       CZ: CZ_1,
     } = ABC_Z_1;
+
+    if write_data() && self.A.num_cols() == witness_size() {
+      write_arecibo_data(format!("result_{:?}", pp_digest), "AZ", &AZ_1);
+      write_arecibo_data(format!("result_{:?}", pp_digest), "BZ", &BZ_1);
+      write_arecibo_data(format!("result_{:?}", pp_digest), "CZ", &CZ_1);
+    }
 
     tracing::info_span!("AZ_2, BZ_2, CZ_2")
       .in_scope(|| self.multiply_witness_into(&W2.W, &E::Scalar::ONE, &U2.X, ABC_Z_2))?;
