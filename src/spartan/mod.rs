@@ -13,6 +13,7 @@ mod macros;
 pub(crate) mod math;
 pub mod polys;
 pub mod ppsnark;
+pub mod lookup_ppsnark;
 pub mod snark;
 mod sumcheck;
 
