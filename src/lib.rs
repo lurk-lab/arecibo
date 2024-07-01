@@ -225,7 +225,7 @@ where
   ///
   /// ```rust
   /// # use arecibo::spartan::ppsnark::RelaxedR1CSSNARK;
-  /// # use arecibo::provider::ipa_pc::EvaluationEngine;
+  /// # use arecibo::provider::pcs::ipa_pc::EvaluationEngine;
   /// # use arecibo::provider::{PallasEngine, VestaEngine};
   /// # use arecibo::traits::{circuit::TrivialCircuit, Engine, snark::RelaxedR1CSSNARKTrait};
   /// use arecibo::PublicParams;
@@ -1023,8 +1023,8 @@ mod tests {
   use super::*;
   use crate::{
     provider::{
-      non_hiding_zeromorph::ZMPCS, Bn256EngineIPA, Bn256EngineKZG, Bn256EngineZM, PallasEngine,
-      Secp256k1Engine,
+      pcs, pcs::non_hiding_zeromorph::ZMPCS, Bn256EngineIPA, Bn256EngineKZG, Bn256EngineZM,
+      PallasEngine, Secp256k1Engine,
     },
     traits::{evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
@@ -1035,7 +1035,7 @@ mod tests {
   use halo2curves::bn256::Bn256;
   use traits::circuit::TrivialCircuit;
 
-  type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
+  type EE<E> = pcs::ipa_pc::EvaluationEngine<E>;
   type S<E, EE> = spartan::snark::RelaxedR1CSSNARK<E, EE>;
   type SPrime<E, EE> = spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
 
@@ -1376,7 +1376,7 @@ mod tests {
     test_ivc_nontrivial_with_compression_with::<Bn256EngineZM, ZMPCS<Bn256, _>, EE<_>>();
     test_ivc_nontrivial_with_compression_with::<
       Bn256EngineKZG,
-      provider::hyperkzg::EvaluationEngine<Bn256, _>,
+      pcs::hyperkzg::EvaluationEngine<Bn256, _>,
       EE<_>,
     >();
   }
@@ -1401,7 +1401,7 @@ mod tests {
     test_ivc_nontrivial_with_spark_compression_with::<Bn256EngineZM, ZMPCS<Bn256, _>, EE<_>>();
     test_ivc_nontrivial_with_spark_compression_with::<
       Bn256EngineKZG,
-      provider::hyperkzg::EvaluationEngine<Bn256, _>,
+      pcs::hyperkzg::EvaluationEngine<Bn256, _>,
       EE<_>,
     >();
   }
@@ -1430,7 +1430,7 @@ mod tests {
     test_ivc_nontrivial_with_batched_compression_with::<Bn256EngineZM, ZMPCS<Bn256, _>, EE<_>>();
     test_ivc_nontrivial_with_batched_compression_with::<
       Bn256EngineKZG,
-      provider::hyperkzg::EvaluationEngine<Bn256, _>,
+      pcs::hyperkzg::EvaluationEngine<Bn256, _>,
       EE<_>,
     >();
   }
@@ -1458,7 +1458,7 @@ mod tests {
     );
     test_ivc_nontrivial_with_batched_spark_compression_with::<
       Bn256EngineKZG,
-      provider::hyperkzg::EvaluationEngine<Bn256, _>,
+      pcs::hyperkzg::EvaluationEngine<Bn256, _>,
       EE<_>,
     >();
   }

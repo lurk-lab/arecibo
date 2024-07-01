@@ -2,15 +2,14 @@
 //!
 //!
 
+use crate::provider::pcs::kzg10_utilities::{
+  KZGCommitmentEngine, KZGProverKey, KZGVerifierKey, UVKZGCommitment, UVKZGEvaluation,
+  UVKZGOpening, UniversalKZGParam, UVKZGPCS,
+};
 use crate::{
   digest::SimpleDigestible,
   errors::{NovaError, PCSError},
-  provider::{
-    kzg_commitment::{
-      KZGCommitmentEngine, KZGProverKey, KZGVerifierKey, UVKZGCommitment, UniversalKZGParam,
-    },
-    traits::DlogGroup,
-  },
+  provider::traits::DlogGroup,
   spartan::polys::{multilinear::MultilinearPolynomial, univariate::UniPoly},
   traits::{
     commitment::Len, evaluation::EvaluationEngineTrait, Engine as NovaEngine, Group,
@@ -30,101 +29,6 @@ use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::{borrow::Borrow, iter, marker::PhantomData};
-
-/// Polynomial Evaluation
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
-pub struct UVKZGEvaluation<E: Engine>(pub E::Fr);
-
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
-
-/// Proofs
-pub struct UVKZGProof<E: Engine> {
-  /// proof
-  pub proof: E::G1Affine,
-}
-
-/// Polynomial and its associated types
-pub type UVKZGPoly<F> = UniPoly<F>;
-
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
-/// KZG Polynomial Commitment Scheme on univariate polynomial.
-/// Note: this is non-hiding, which is why we will implement traits on this token struct,
-/// as we expect to have several impls for the trait pegged on the same instance of a pairing::Engine.
-#[allow(clippy::upper_case_acronyms)]
-pub struct UVKZGPCS<E> {
-  #[doc(hidden)]
-  phantom: PhantomData<E>,
-}
-
-impl<E: MultiMillerLoop> UVKZGPCS<E>
-where
-  E::G1: DlogGroup<AffineExt = E::G1Affine, ScalarExt = E::Fr>,
-{
-  fn commit_offset(
-    prover_param: impl Borrow<KZGProverKey<E>>,
-    poly: &UVKZGPoly<E::Fr>,
-    offset: usize,
-  ) -> Result<UVKZGCommitment<E>, NovaError> {
-    let prover_param = prover_param.borrow();
-
-    if poly.degree() > prover_param.powers_of_g().len() {
-      return Err(NovaError::PCSError(PCSError::LengthError));
-    }
-
-    let scalars = poly.coeffs.as_slice();
-    let bases = prover_param.powers_of_g();
-
-    // We can avoid some scalar multiplications if 'scalars' contains a lot of leading zeroes using
-    // offset, that points where non-zero scalars start.
-    let C = <E::G1 as DlogGroup>::vartime_multiscalar_mul(
-      &scalars[offset..],
-      &bases[offset..scalars.len()],
-    );
-
-    Ok(UVKZGCommitment(C.to_affine()))
-  }
-
-  /// Generate a commitment for a polynomial
-  /// Note that the scheme is not hiding
-  pub fn commit(
-    prover_param: impl Borrow<KZGProverKey<E>>,
-    poly: &UVKZGPoly<E::Fr>,
-  ) -> Result<UVKZGCommitment<E>, NovaError> {
-    let prover_param = prover_param.borrow();
-
-    if poly.degree() > prover_param.powers_of_g().len() {
-      return Err(NovaError::PCSError(PCSError::LengthError));
-    }
-    let C = <E::G1 as DlogGroup>::vartime_multiscalar_mul(
-      poly.coeffs.as_slice(),
-      &prover_param.powers_of_g()[..poly.coeffs.len()],
-    );
-    Ok(UVKZGCommitment(C.to_affine()))
-  }
-
-  /// On input a polynomial `p` and a point `point`, outputs a proof for the
-  /// same.
-  pub fn open(
-    prover_param: impl Borrow<KZGProverKey<E>>,
-    polynomial: &UVKZGPoly<E::Fr>,
-    point: &E::Fr,
-  ) -> Result<(UVKZGProof<E>, UVKZGEvaluation<E>), NovaError> {
-    let prover_param = prover_param.borrow();
-    let witness_polynomial = polynomial.divide_minus_u(*point);
-    let proof = <E::G1 as DlogGroup>::vartime_multiscalar_mul(
-      witness_polynomial.coeffs.as_slice(),
-      &prover_param.powers_of_g()[..witness_polynomial.coeffs.len()],
-    );
-    let evaluation = UVKZGEvaluation(polynomial.evaluate(point));
-
-    Ok((
-      UVKZGProof {
-        proof: proof.to_affine(),
-      },
-      evaluation,
-    ))
-  }
-}
 
 /// `ZMProverKey` is used to generate a proof
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -320,11 +224,10 @@ where
     // hence uveval == Fr::ZERO
 
     // Compute and send proof commitment pi
-    let (uvproof, _uveval): (UVKZGProof<_>, UVKZGEvaluation<_>) =
-      UVKZGPCS::<E>::open(&pp.open_pp, &f, &x)?;
+    let pi: UVKZGOpening<_> = UVKZGPCS::<E>::open(&pp.open_pp, &f, &x)?;
 
     let proof = ZMProof {
-      pi: uvproof.proof,
+      pi: pi.opening,
       cqhat: q_hat_comm,
       ck: q_comms,
     };
@@ -554,7 +457,6 @@ where
 {
   type ProverKey = ZMProverKey<E>;
   type VerifierKey = ZMVerifierKey<E>;
-
   type EvaluationArgument = ZMProof<E>;
 
   fn setup(ck: Arc<UniversalKZGParam<E>>) -> (Self::ProverKey, Self::VerifierKey) {
@@ -612,16 +514,14 @@ mod test {
 
   use super::{quotients, UVKZGPCS};
 
+  use crate::provider::pcs::{
+    kzg10_utilities::{KZGProverKey, UVKZGCommitment, UniversalKZGParam},
+    non_hiding_zeromorph::{batched_lifted_degree_quotient, eval_and_quotient_scalars, ZMPCS},
+  };
   use crate::spartan::polys::univariate::UniPoly;
   use crate::{
     errors::PCSError,
-    provider::{
-      kzg_commitment::{KZGProverKey, UVKZGCommitment, UniversalKZGParam},
-      non_hiding_zeromorph::{batched_lifted_degree_quotient, eval_and_quotient_scalars, ZMPCS},
-      traits::DlogGroup,
-      util::test_utils::prove_verify_from_num_vars,
-      Bn256EngineZM,
-    },
+    provider::{traits::DlogGroup, util::test_utils::prove_verify_from_num_vars, Bn256EngineZM},
     spartan::polys::multilinear::MultilinearPolynomial,
     NovaError,
   };

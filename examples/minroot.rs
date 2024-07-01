@@ -340,8 +340,8 @@ fn main() {
     let start = Instant::now();
     type E1 = Bn256EngineKZG;
     type E2 = GrumpkinEngine;
-    type EE1 = arecibo::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
-    type EE2 = arecibo::provider::ipa_pc::EvaluationEngine<E2>;
+    type EE1 = arecibo::provider::pcs::hyperkzg::EvaluationEngine<Bn256, E1>;
+    type EE2 = arecibo::provider::pcs::ipa_pc::EvaluationEngine<E2>;
     type S1 = arecibo::spartan::ppsnark::RelaxedR1CSSNARK<E1, EE1>; // preprocessing SNARK
     type S2 = arecibo::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>; // preprocessing SNARK
 

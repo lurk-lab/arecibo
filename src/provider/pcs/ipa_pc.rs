@@ -1,8 +1,9 @@
 //! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
+use crate::provider::pcs::pedersen::CommitmentKeyExtTrait;
 use crate::{
   digest::SimpleDigestible,
   errors::{NovaError, PCSError},
-  provider::{pedersen::CommitmentKeyExtTrait, traits::DlogGroup, util::field::batch_invert},
+  provider::{traits::DlogGroup, util::field::batch_invert},
   spartan::polys::eq::EqPolynomial,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
@@ -377,7 +378,7 @@ where
 
 #[cfg(test)]
 mod test {
-  use crate::provider::ipa_pc::EvaluationEngine;
+  use crate::provider::pcs::ipa_pc::EvaluationEngine;
   use crate::provider::util::test_utils::prove_verify_from_num_vars;
   use crate::provider::GrumpkinEngine;
 
