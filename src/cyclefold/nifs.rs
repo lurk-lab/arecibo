@@ -2,6 +2,9 @@
 
 use std::marker::PhantomData;
 
+use rand_core::OsRng;
+use ff::Field;
+
 use crate::{
   constants::{NIO_CYCLE_FOLD, NUM_CHALLENGE_BITS, NUM_FE_IN_EMULATED_POINT},
   errors::NovaError,
@@ -66,7 +69,8 @@ where
 
     absorb_primary_r1cs::<E1, E2>(U2, &mut ro);
 
-    let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2)?;
+    let r_T = E1::Scalar::random(&mut OsRng);
+    let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2, &r_T)?;
 
     absorb_primary_commitment::<E1, E2>(&comm_T, &mut ro);
 
@@ -74,7 +78,7 @@ where
 
     let U = U1.fold(U2, &comm_T, &r);
 
-    let W = W1.fold(W2, &T, &r)?;
+    let W = W1.fold(W2, &T, &r_T, &r)?;
 
     Ok((
       Self {
@@ -131,7 +135,8 @@ impl<E: Engine> CycleFoldNIFS<E> {
     absorb_cyclefold_r1cs(U2, &mut ro);
 
     // compute a commitment to the cross-term
-    let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2)?;
+    let r_T = E::Scalar::random(&mut OsRng);
+    let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2, &r_T)?;
 
     // append `comm_T` to the transcript and obtain a challenge
     comm_T.absorb_in_ro(&mut ro);
@@ -143,7 +148,7 @@ impl<E: Engine> CycleFoldNIFS<E> {
     let U = U1.fold(U2, &comm_T, &r);
 
     // fold the witness using `r` and `T`
-    let W = W1.fold(W2, &T, &r)?;
+    let W = W1.fold(W2, &T, &r_T, &r)?;
 
     // return the folded instance and witness
     Ok((

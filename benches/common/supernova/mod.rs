@@ -14,16 +14,16 @@ use core::marker::PhantomData;
 use ff::PrimeField;
 use halo2curves::bn256::Bn256;
 
-pub type E1 = arecibo::provider::Bn256EngineKZG;
-pub type E2 = arecibo::provider::GrumpkinEngine;
-pub type EE1 = arecibo::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
+pub type E1 = arecibo::provider::PallasEngine;
+pub type E2 = arecibo::provider::VestaEngine;
+pub type EE1 = arecibo::provider::ipa_pc::EvaluationEngine<E1>;
 pub type EE2 = arecibo::provider::ipa_pc::EvaluationEngine<E2>;
 // SNARKs without computation commitments
-pub type S1 = arecibo::spartan::batched::BatchedRelaxedR1CSSNARK<E1, EE1>;
-pub type S2 = arecibo::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
+// pub type S1 = arecibo::spartan::batched::BatchedRelaxedR1CSSNARK<E1, EE1>;
+// pub type S2 = arecibo::spartan::zksnark::RelaxedR1CSSNARK<E2, EE2>;
 // SNARKs with computation commitments
-pub type SS1 = arecibo::spartan::batched_ppsnark::BatchedRelaxedR1CSSNARK<E1, EE1>;
-pub type SS2 = arecibo::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>;
+// pub type SS1 = arecibo::spartan::batched_ppsnark::BatchedRelaxedR1CSSNARK<E1, EE1>;
+// pub type SS2 = arecibo::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>;
 
 // This should match the value in test_supernova_recursive_circuit_pasta
 // Note `NUM_CONS_VERIFIER_CIRCUIT_PRIMARY` is different for Nova and Supernova

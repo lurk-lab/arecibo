@@ -5,8 +5,8 @@ use crate::common::supernova::{
   num_cons, NonUniformBench, SnarkType, E1, E2, NUM_CONS_VERIFIER_CIRCUIT_PRIMARY, NUM_SAMPLES,
 };
 use crate::common::{noise_threshold_env, BenchParams};
+use arecibo::provider::{PallasEngine, VestaEngine};
 use arecibo::{
-  provider::{Bn256EngineKZG, GrumpkinEngine},
   supernova::NonUniformCircuit,
   supernova::{snark::CompressedSNARK, PublicParams, RecursiveSNARK},
   traits::{
@@ -144,8 +144,8 @@ pub fn bench_snark_internal_with_arity<
           black_box(&mut recursive_snark.clone())
             .verify(
               black_box(&pp),
-              black_box(&[<Bn256EngineKZG as Engine>::Scalar::from(2u64)]),
-              black_box(&[<GrumpkinEngine as Engine>::Scalar::from(2u64)]),
+              black_box(&[<PallasEngine as Engine>::Scalar::from(2u64)]),
+              black_box(&[<VestaEngine as Engine>::Scalar::from(2u64)]),
             )
             .unwrap();
         })

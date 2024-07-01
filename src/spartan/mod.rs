@@ -6,15 +6,19 @@
 //!
 //! In polynomial.rs we also provide foundational types and functions for manipulating multilinear polynomials.
 
-pub mod batched;
-pub mod batched_ppsnark;
+// pub mod batched;
+// pub mod batched_ppsnark;
 #[macro_use]
 mod macros;
 pub(crate) mod math;
 pub mod polys;
-pub mod ppsnark;
-pub mod snark;
-mod sumcheck;
+pub mod nizk;
+// pub mod ppsnark;
+// pub mod snark;
+// mod sumcheck;
+
+pub mod zksnark;
+mod zksumcheck;
 
 use crate::{
   r1cs::{R1CSShape, SparseMatrix},

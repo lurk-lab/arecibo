@@ -6,7 +6,7 @@ use crate::{
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
-use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup};
+use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding};
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 use grumpkin_msm::{bn256 as bn256_msm, grumpkin as grumpkin_msm};
 // Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves

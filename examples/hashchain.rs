@@ -1,13 +1,13 @@
 //! This example proves the knowledge of preimage to a hash chain tail, with a configurable number of elements per hash chain node.
 //! The output of each step tracks the current tail of the hash chain
 use arecibo::{
-  provider::{Bn256EngineKZG, GrumpkinEngine},
+  provider::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
     Engine, Group,
   },
-  CompressedSNARK, PublicParams, RecursiveSNARK,
+  CompressedSNARK, PublicParams, RecursiveSNARK, StepCounterType,
 };
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::Field;
@@ -25,12 +25,12 @@ use neptune::{
 };
 use std::time::Instant;
 
-type E1 = Bn256EngineKZG;
-type E2 = GrumpkinEngine;
-type EE1 = arecibo::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
+type E1 = PallasEngine;
+type E2 = VestaEngine;
+type EE1 = arecibo::provider::ipa_pc::EvaluationEngine<E1>;
 type EE2 = arecibo::provider::ipa_pc::EvaluationEngine<E2>;
-type S1 = arecibo::spartan::snark::RelaxedR1CSSNARK<E1, EE1>; // non-preprocessing SNARK
-type S2 = arecibo::spartan::snark::RelaxedR1CSSNARK<E2, EE2>; // non-preprocessing SNARK
+type S1 = arecibo::spartan::zksnark::RelaxedR1CSSNARK<E1, EE1>;
+type S2 = arecibo::spartan::zksnark::RelaxedR1CSSNARK<E2, EE2>;
 
 #[derive(Clone, Debug)]
 struct HashChainCircuit<G: Group> {
@@ -56,6 +56,10 @@ impl<G: Group> HashChainCircuit<G> {
 impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
   fn arity(&self) -> usize {
     1
+  }
+
+  fn get_counter_type(&self) -> StepCounterType {
+    StepCounterType::Incremental
   }
 
   fn synthesize<CS: ConstraintSystem<G::Scalar>>(

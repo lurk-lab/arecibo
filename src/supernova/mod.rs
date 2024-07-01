@@ -16,7 +16,7 @@ use crate::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     AbsorbInROTrait, CurveCycleEquipped, Dual, Engine, ROConstants, ROConstantsCircuit, ROTrait,
   },
-  Commitment, CommitmentKey, R1CSWithArity,
+  Commitment, CommitmentKey, R1CSWithArity, StepCounterType,
 };
 
 #[cfg(feature = "abomonate")]
@@ -85,6 +85,8 @@ pub struct PublicParams<E1>
 where
   E1: CurveCycleEquipped,
 {
+  counter_type: StepCounterType,
+
   /// The internal circuit shapes
   circuit_shapes: Vec<R1CSWithArity<E1>>,
 
@@ -252,6 +254,13 @@ where
     let ro_consts_circuit_primary: ROConstantsCircuit<Dual<E1>> =
       ROConstantsCircuit::<Dual<E1>>::default();
 
+    // let step_counter_primary = c_primary.get_counter_type();
+    // let step_counter_secondary = c_secondary.get_counter_type();
+
+    // if step_counter_primary != step_counter_secondary {
+    //   return Err(NovaError::MismatchedCounterType);
+    // }
+
     let circuit_shapes = (0..num_circuits)
       .map(|i| {
         let c_primary = non_uniform_circuit.primary_circuit(i);
@@ -303,6 +312,7 @@ where
     let circuit_shape_secondary = R1CSWithArity::new(r1cs_shape_secondary, F_arity_secondary);
 
     let pp = Self {
+      counter_type: StepCounterType::Incremental,
       circuit_shapes,
       ro_consts_primary,
       ro_consts_circuit_primary,
@@ -327,6 +337,7 @@ where
     let digest = self.digest();
 
     let Self {
+      counter_type,
       circuit_shapes,
       ro_consts_primary,
       ro_consts_circuit_primary,
@@ -359,6 +370,7 @@ where
   /// Create a [`PublicParams`] from a vector of raw [`R1CSWithArity`] and auxiliary params.
   pub fn from_parts(circuit_shapes: Vec<R1CSWithArity<E1>>, aux_params: AuxParams<E1>) -> Self {
     let pp = Self {
+      counter_type: StepCounterType::Incremental,
       circuit_shapes,
       ro_consts_primary: aux_params.ro_consts_primary,
       ro_consts_circuit_primary: aux_params.ro_consts_circuit_primary,
@@ -385,7 +397,8 @@ where
     circuit_shapes: Vec<R1CSWithArity<E1>>,
     aux_params: AuxParams<E1>,
   ) -> Self {
-    Self {
+    Self {      
+      counter_type: StepCounterType::Incremental,
       circuit_shapes,
       ro_consts_primary: aux_params.ro_consts_primary,
       ro_consts_circuit_primary: aux_params.ro_consts_circuit_primary,
@@ -425,6 +438,11 @@ where
       })
       .cloned()
       .expect("Failure in retrieving digest")
+  }
+
+  /// Returns the type of the counter for this circuit
+  pub fn get_counter_type(&self) -> StepCounterType {
+    self.counter_type
   }
 
   /// Returns the number of constraints and variables of inner circuit based on index
@@ -755,6 +773,8 @@ where
       return Ok(());
     }
 
+    let counter_type = pp.get_counter_type();
+
     // save the inputs before proceeding to the `i+1`th step
     let r_U_primary_i = self.r_U_primary.clone();
     // Create single-entry accumulator list for the secondary circuit to hand to SuperNovaAugmentedCircuitInputs
@@ -922,7 +942,14 @@ where
 
     self.l_w_secondary = l_w_secondary_next;
     self.l_u_secondary = l_u_secondary_next;
-    self.i += 1;
+
+    // self.i += 1;
+
+    match counter_type {
+      StepCounterType::Incremental => self.i += 1,
+      StepCounterType::External => self.i = 1,
+    };
+    
     self.zi_primary = zi_primary;
     self.zi_secondary = zi_secondary;
     self.proven_circuit_index = circuit_index;

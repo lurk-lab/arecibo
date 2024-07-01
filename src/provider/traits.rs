@@ -1,6 +1,8 @@
 use crate::traits::{Group, TranscriptReprTrait};
+use abomonation::Abomonation;
 use group::prime::PrimeCurveAffine;
 use group::{prime::PrimeCurve, GroupEncoding};
+use pasta_curves::pallas::Affine;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::ops::Mul;
@@ -12,7 +14,7 @@ pub trait DlogGroup:
   + for<'de> Deserialize<'de>
   + PrimeCurve<Scalar = <Self as DlogGroup>::ScalarExt, Affine = <Self as DlogGroup>::AffineExt>
 {
-  type ScalarExt;
+  type ScalarExt: Clone;
   type AffineExt: Clone
     + Debug
     + Eq
@@ -38,7 +40,22 @@ pub trait DlogGroup:
   fn vartime_multiscalar_mul(scalars: &[Self::ScalarExt], bases: &[Self::AffineExt]) -> Self;
 
   /// Produce a vector of group elements using a static label
-  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::Affine>;
+  fn from_label(label: &[u8], n: usize) -> Vec<Self::Affine>;
+
+  /// Compresses the group element
+  fn compress(&self) -> Self::Compressed;
+
+  /// Produces a preprocessed element
+  fn preprocessed(&self) -> Self::Affine;
+
+  /// Returns a group element from a preprocessed group element
+  fn group(p: &Self::Affine) -> Self;
+
+  /// Returns an element that is the additive identity of the group
+  fn zero() -> Self;
+
+  /// Returns the generator of the group
+  fn gen() -> Self;
 
   /// Returns the affine coordinates (x, y, infinity) for the point
   fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
@@ -100,7 +117,19 @@ macro_rules! impl_traits {
         cpu_best_msm(bases, scalars)
       }
 
-      fn from_label(label: &'static [u8], n: usize) -> Vec<Self::Affine> {
+      fn preprocessed(&self) -> Self::Affine {
+        self.to_affine()
+      }
+
+      fn group(p: &Self::Affine) -> Self {
+        $name::Point::from(*p)
+      }
+
+      fn compress(&self) -> Self::Compressed {
+        self.to_bytes()
+      }
+
+      fn from_label(label: &[u8], n: usize) -> Vec<Self::Affine> {
         let mut shake = Shake256::default();
         shake.update(label);
         let mut reader = shake.finalize_xof();
@@ -144,6 +173,14 @@ macro_rules! impl_traits {
           <Self as Curve>::batch_normalize(&gens_proj, &mut gens);
           gens
         }
+      }
+
+      fn zero() -> Self {
+        $name::Point::identity()
+      }
+
+      fn gen() -> Self {
+        $name::Point::generator()
       }
 
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {

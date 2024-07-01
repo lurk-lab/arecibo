@@ -1,20 +1,20 @@
 use std::{marker::PhantomData, time::Duration};
 
 use arecibo::{
-  provider::{Bn256EngineKZG, GrumpkinEngine},
+  provider::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  PublicParams,
+  PublicParams, StepCounterType,
 };
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::PrimeField;
 
-type E1 = Bn256EngineKZG;
-type E2 = GrumpkinEngine;
+type E1 = PallasEngine;
+type E2 = VestaEngine;
 type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
 type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
@@ -56,6 +56,10 @@ impl<F: PrimeField> NonTrivialCircuit<F> {
 impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
   fn arity(&self) -> usize {
     1
+  }
+
+  fn get_counter_type(&self) -> StepCounterType {
+    StepCounterType::Incremental
   }
 
   fn synthesize<CS: ConstraintSystem<F>>(

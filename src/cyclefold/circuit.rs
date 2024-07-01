@@ -170,7 +170,7 @@ mod tests {
     },
     constants::NIO_CYCLE_FOLD,
     gadgets::scalar_as_base,
-    provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
+    provider::{PallasEngine, Secp256k1Engine},
     traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, CurveCycleEquipped, Dual},
   };
 
@@ -201,7 +201,7 @@ mod tests {
   #[test]
   fn test_cyclefold_circuit_size() {
     test_cyclefold_circuit_size_with::<PallasEngine>(&expect!("2090"), &expect!("2081"));
-    test_cyclefold_circuit_size_with::<Bn256EngineKZG>(&expect!("2090"), &expect!("2081"));
+    // test_cyclefold_circuit_size_with::<Bn256EngineKZG>(&expect!("2090"), &expect!("2081"));
     test_cyclefold_circuit_size_with::<Secp256k1Engine>(&expect!("2090"), &expect!("2081"));
   }
 
@@ -218,9 +218,12 @@ mod tests {
       .map(|_| <<Dual<E> as Engine>::Scalar as Field>::random(rng))
       .collect::<Vec<_>>();
 
+    // produce a random scalar
+    let r = <Dual<E> as Engine>::Scalar::random(&mut OsRng);
+
     // Calculate the random commitments
-    let C_1 = <<Dual<E> as Engine>::CE as CommitmentEngineTrait<Dual<E>>>::commit(&ck, &v1);
-    let C_2 = <<Dual<E> as Engine>::CE as CommitmentEngineTrait<Dual<E>>>::commit(&ck, &v2);
+    let C_1 = <<Dual<E> as Engine>::CE as CommitmentEngineTrait<Dual<E>>>::commit(&ck, &v1, &r);
+    let C_2 = <<Dual<E> as Engine>::CE as CommitmentEngineTrait<Dual<E>>>::commit(&ck, &v2, &r);
 
     // Generate a random scalar
     let val: u128 = rand::random();
@@ -281,7 +284,7 @@ mod tests {
   #[test]
   fn test_cyclefold_circuit_sat() {
     test_cyclefold_circuit_sat_with::<PallasEngine>();
-    test_cyclefold_circuit_sat_with::<Bn256EngineKZG>();
+    // test_cyclefold_circuit_sat_with::<Bn256EngineKZG>();
     test_cyclefold_circuit_sat_with::<Secp256k1Engine>();
   }
 }

@@ -25,6 +25,9 @@ pub enum NovaError {
   /// returned if the supplied witness is not a satisfying witness to a given shape and instance, with error constraint index
   #[error("UnSatIndex")]
   UnSatIndex(usize),
+  /// returned if the counter types for the primary and secondary circuit are not the same
+  #[error("MismatchedCounterType")]
+  MismatchedCounterType,
   /// returned when the supplied compressed commitment cannot be decompressed
   #[error("DecompressionError")]
   DecompressionError,
@@ -40,9 +43,24 @@ pub enum NovaError {
   /// returned if there is an error in the proof/verification of a PCS
   #[error("PCSError")]
   PCSError(#[from] PCSError),
+  /// returned when an invalid knowledge proof is returned
+  #[error("InvalidZkKnowledgeProof")]
+  InvalidZkKnowledgeProof,
+  /// returned when an invalid equality proof is returned
+  #[error("InvalidZkEqualityProof")]
+  InvalidZkEqualityProof,
+  /// returned when an invalid product proof is returned
+  #[error("InvalidZkProductProof")]
+  InvalidZkProductProof,
+  /// returned when an invalid dot product proof (schnorr) is provided
+  #[error("InvalidZkDotProductProof")]
+  InvalidZkDotProductProof,
   /// returned when an invalid sum-check proof is provided
   #[error("InvalidSumcheckProof")]
   InvalidSumcheckProof,
+  /// InvalidIPA
+  #[error("InvalidIPA")]
+  InvalidIPA,
   /// returned when the initial input to an incremental computation differs from a previously declared arity
   #[error("InvalidInitialInputLength")]
   InvalidInitialInputLength,

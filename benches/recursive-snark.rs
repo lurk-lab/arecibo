@@ -1,12 +1,12 @@
 #![allow(non_snake_case)]
 use arecibo::{
-  provider::{Bn256EngineKZG, GrumpkinEngine},
+  provider::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  PublicParams, RecursiveSNARK,
+  PublicParams, RecursiveSNARK, StepCounterType,
 };
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
@@ -17,8 +17,8 @@ use std::time::Duration;
 mod common;
 use common::{noise_threshold_env, BenchParams};
 
-type E1 = Bn256EngineKZG;
-type E2 = GrumpkinEngine;
+type E1 = PallasEngine;
+type E2 = VestaEngine;
 
 // To run these benchmarks, first download `criterion` with `cargo install cargo-criterion`.
 // Then `cargo criterion --bench recursive-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
@@ -162,6 +162,10 @@ impl<F: PrimeField> NonTrivialCircuit<F> {
 impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
   fn arity(&self) -> usize {
     1
+  }
+   
+  fn get_counter_type(&self) -> StepCounterType {
+    StepCounterType::Incremental
   }
 
   fn synthesize<CS: ConstraintSystem<F>>(

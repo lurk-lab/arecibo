@@ -1,13 +1,15 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
+use crate::provider::traits::DlogGroup;
 use crate::{
   errors::NovaError,
   traits::{AbsorbInROTrait, Engine, TranscriptReprTrait},
 };
 use abomonation::Abomonation;
+use group::prime::PrimeCurve;
 use core::{
   fmt::Debug,
-  ops::{Add, Mul, MulAssign},
+  ops::{Add, Mul, MulAssign, Sub},
 };
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +35,7 @@ pub trait CommitmentTrait<E: Engine>:
   + Abomonation
   + AbsorbInROTrait<E>
   + Add<Self, Output = Self>
+  + Sub<Self, Output = Self>
   + ScalarMul<E::Scalar>
 {
   /// Holds the type of the compressed commitment
@@ -54,6 +57,11 @@ pub trait CommitmentTrait<E: Engine>:
 
   /// Decompresses a compressed commitment into a commitment
   fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError>;
+
+  /// Reinterpret as generator
+  fn reinterpret_as_generator(&self) -> <<E as Engine>::GE as PrimeCurve>::Affine
+  where
+    E::GE: DlogGroup;
 }
 
 /// A trait that helps determine the length of a structure.
@@ -80,9 +88,51 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// Holds the type of the commitment
   type Commitment: CommitmentTrait<E>;
 
-  /// Samples a new commitment key of a specified size
+  /// Samples a new commitment key of a specified size (power of 2)
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;
 
+  /// Samples a new commitment key of a specified size
+  fn setup_exact(label: &'static [u8], n: usize) -> Self::CommitmentKey;
+
+  /// Samples a new commitment key (power of 2) but reuses the blinding generator of ck
+  fn setup_with_blinding(
+    label: &'static [u8],
+    n: usize,
+    h: &<<E as Engine>::GE as PrimeCurve>::Affine,
+  ) -> Self::CommitmentKey
+  where
+    E::GE: DlogGroup;
+
+  /// Samples a new commitment key of specific size but reuses the blinding generator of ck
+  fn setup_exact_with_blinding(
+    label: &'static [u8],
+    n: usize,
+    h: &<<E as Engine>::GE as PrimeCurve>::Affine,
+  ) -> Self::CommitmentKey
+  where
+    E::GE: DlogGroup;
+
   /// Commits to the provided vector using the provided generators
-  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment;
+  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment;
+
+  /// Returns the generators of the commitment
+  fn get_gens(
+    ck: &Self::CommitmentKey,
+  ) -> Vec<<<E as Engine>::GE as PrimeCurve>::Affine>
+  where
+    E::GE: DlogGroup;
+
+  /// Returns the blinding generator of the commitment
+  fn get_blinding_gen(
+    ck: &Self::CommitmentKey,
+  ) -> <<E as Engine>::GE as PrimeCurve>::Affine
+  where
+    E::GE: DlogGroup;
+
+  /// Converts a commitment into generators (with no blinding generator)
+  fn from_preprocessed(
+    com: Vec<<<E as Engine>::GE as PrimeCurve>::Affine>,
+  ) -> Self::CommitmentKey
+  where
+    E::GE: DlogGroup;
 }

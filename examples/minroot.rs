@@ -3,8 +3,9 @@
 //! We execute a configurable number of iterations of the `MinRoot` function per step of Nova's recursion.
 #[cfg(feature = "abomonate")]
 use arecibo::FlatPublicParams;
+use arecibo::StepCounterType;
 use arecibo::{
-  provider::{Bn256EngineKZG, GrumpkinEngine},
+  provider::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
@@ -138,6 +139,10 @@ impl<G: Group> StepCircuit<G::Scalar> for MinRootCircuit<G> {
     2
   }
 
+  fn get_counter_type(&self) -> StepCounterType {
+    StepCounterType::Incremental
+  }
+
   fn synthesize<CS: ConstraintSystem<G::Scalar>>(
     &self,
     cs: &mut CS,
@@ -195,7 +200,7 @@ fn main() {
     .with(EnvFilter::from_default_env())
     .with(TeXRayLayer::new());
   tracing::subscriber::set_global_default(subscriber).unwrap();
-  type C1 = MinRootCircuit<<Bn256EngineKZG as Engine>::GE>;
+  type C1 = MinRootCircuit<<PallasEngine as Engine>::GE>;
 
   println!("Nova-based VDF with MinRoot delay function");
   println!("=========================================================");
@@ -338,12 +343,12 @@ fn main() {
     let (pk, vk) = CompressedSNARK::<_, S1, S2>::setup(&pp).unwrap();
 
     let start = Instant::now();
-    type E1 = Bn256EngineKZG;
-    type E2 = GrumpkinEngine;
-    type EE1 = arecibo::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
+    type E1 = PallasEngine;
+    type E2 = VestaEngine;
+    type EE1 = arecibo::provider::ipa_pc::EvaluationEngine<E1>;
     type EE2 = arecibo::provider::ipa_pc::EvaluationEngine<E2>;
-    type S1 = arecibo::spartan::ppsnark::RelaxedR1CSSNARK<E1, EE1>; // preprocessing SNARK
-    type S2 = arecibo::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>; // preprocessing SNARK
+    type S1 = arecibo::spartan::zksnark::RelaxedR1CSSNARK<E1, EE1>;
+    type S2 = arecibo::spartan::zksnark::RelaxedR1CSSNARK<E2, EE2>;
 
     let res = CompressedSNARK::<_, S1, S2>::prove(&pp, &pk, &recursive_snark);
     println!(

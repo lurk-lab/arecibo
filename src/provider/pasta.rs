@@ -12,6 +12,7 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
+  group::{Group as AnotherGroup, GroupEncoding},
   pallas, vesta,
 };
 use rayon::prelude::*;
@@ -23,9 +24,23 @@ use std::io::Read;
 #[derive(Clone, Copy, Debug, Eq, From, Into, PartialEq, Serialize, Deserialize)]
 pub struct PallasCompressedElementWrapper([u8; 32]);
 
+impl PallasCompressedElementWrapper {
+  /// Wraps repr into the wrapper
+  pub const fn new(repr: [u8; 32]) -> Self {
+    Self(repr)
+  }
+}
+
 /// A wrapper for compressed group elements of vesta
 #[derive(Clone, Copy, Debug, Eq, From, Into, PartialEq, Serialize, Deserialize)]
 pub struct VestaCompressedElementWrapper([u8; 32]);
+
+impl VestaCompressedElementWrapper {
+  /// Wraps repr into the wrapper
+  pub const fn new(repr: [u8; 32]) -> Self {
+    Self(repr)
+  }
+}
 
 macro_rules! impl_traits {
   (
@@ -74,7 +89,19 @@ macro_rules! impl_traits {
         cpu_best_msm(bases, scalars)
       }
 
-      fn from_label(label: &'static [u8], n: usize) -> Vec<Self::Affine> {
+      fn preprocessed(&self) -> Self::Affine {
+        self.to_affine()
+      }
+
+      fn group(p: &Self::Affine) -> Self {
+        $name::Point::from(*p)
+      }
+
+      fn compress(&self) -> Self::Compressed {
+        $name_compressed::new(self.to_bytes())
+      }
+
+      fn from_label(label: &[u8], n: usize) -> Vec<Self::Affine> {
         let mut shake = Shake256::default();
         shake.update(label);
         let mut reader = shake.finalize_xof();
@@ -118,6 +145,14 @@ macro_rules! impl_traits {
           <Self as Curve>::batch_normalize(&ck_proj, &mut ck);
           ck
         }
+      }
+
+      fn zero() -> Self {
+        $name::Point::identity()
+      }
+
+      fn gen() -> Self {
+        $name::Point::generator()
       }
 
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {

@@ -4,13 +4,13 @@
 //! It also uses code from bellman/bellperson to compare circuit-generated digest with sha2 crate's output
 #![allow(non_snake_case)]
 use arecibo::{
-  provider::{Bn256EngineKZG, GrumpkinEngine},
+  provider::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  PublicParams, RecursiveSNARK,
+  PublicParams, RecursiveSNARK, StepCounterType,
 };
 use bellpepper::gadgets::{sha256::sha256, Assignment};
 use bellpepper_core::{
@@ -24,8 +24,8 @@ use criterion::*;
 use ff::{PrimeField, PrimeFieldBits};
 use sha2::{Digest, Sha256};
 
-type E1 = Bn256EngineKZG;
-type E2 = GrumpkinEngine;
+type E1 = PallasEngine;
+type E2 = VestaEngine;
 
 #[derive(Clone, Debug)]
 struct Sha256Circuit<Scalar: PrimeField> {
@@ -46,6 +46,10 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
   fn arity(&self) -> usize {
     1
   }
+    
+  fn get_counter_type(&self) -> StepCounterType {
+    StepCounterType::Incremental
+}
 
   fn synthesize<CS: ConstraintSystem<Scalar>>(
     &self,
@@ -133,14 +137,14 @@ criterion_main!(recursive_snark);
 fn bench_recursive_snark(c: &mut Criterion) {
   // Test vectors
   let circuits = vec![
-    Sha256Circuit::new(vec![0u8; 1 << 6]),
-    Sha256Circuit::new(vec![0u8; 1 << 7]),
-    Sha256Circuit::new(vec![0u8; 1 << 8]),
-    Sha256Circuit::new(vec![0u8; 1 << 9]),
-    Sha256Circuit::new(vec![0u8; 1 << 10]),
-    Sha256Circuit::new(vec![0u8; 1 << 11]),
-    Sha256Circuit::new(vec![0u8; 1 << 12]),
-    Sha256Circuit::new(vec![0u8; 1 << 13]),
+    // Sha256Circuit::new(vec![0u8; 1 << 6]),
+    // Sha256Circuit::new(vec![0u8; 1 << 7]),
+    // Sha256Circuit::new(vec![0u8; 1 << 8]),
+    // Sha256Circuit::new(vec![0u8; 1 << 9]),
+    // Sha256Circuit::new(vec![0u8; 1 << 10]),
+    // Sha256Circuit::new(vec![0u8; 1 << 11]),
+    // Sha256Circuit::new(vec![0u8; 1 << 12]),
+    // Sha256Circuit::new(vec![0u8; 1 << 13]),
     Sha256Circuit::new(vec![0u8; 1 << 14]),
     Sha256Circuit::new(vec![0u8; 1 << 15]),
     Sha256Circuit::new(vec![0u8; 1 << 16]),

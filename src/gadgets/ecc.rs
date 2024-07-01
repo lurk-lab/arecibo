@@ -786,7 +786,7 @@ mod tests {
     provider::{
       bn256_grumpkin::{bn256, grumpkin},
       secp_secq::{secp256k1, secq256k1},
-      Bn256EngineIPA, Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine,
+      Bn256EngineIPA, GrumpkinEngine, PallasEngine, Secp256k1Engine,
       Secq256k1Engine, VestaEngine,
     },
     traits::{snark::default_ck_hint, Engine},
@@ -1077,8 +1077,8 @@ mod tests {
     test_ecc_circuit_add_equal_with::<PallasEngine, VestaEngine>();
     test_ecc_circuit_add_equal_with::<VestaEngine, PallasEngine>();
 
-    test_ecc_circuit_add_equal_with::<Bn256EngineKZG, GrumpkinEngine>();
-    test_ecc_circuit_add_equal_with::<GrumpkinEngine, Bn256EngineKZG>();
+    // test_ecc_circuit_add_equal_with::<Bn256EngineKZG, GrumpkinEngine>();
+    // test_ecc_circuit_add_equal_with::<GrumpkinEngine, Bn256EngineKZG>();
 
     test_ecc_circuit_add_equal_with::<Secp256k1Engine, Secq256k1Engine>();
     test_ecc_circuit_add_equal_with::<Secq256k1Engine, Secp256k1Engine>();

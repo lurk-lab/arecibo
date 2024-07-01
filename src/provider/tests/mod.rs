@@ -11,81 +11,82 @@ pub mod solidity_compatibility_utils {
   use group::prime::PrimeCurveAffine;
   use group::GroupEncoding;
   use rand::rngs::StdRng;
-  use serde_json::{Map, Value};
+  use serde::Serialize;
+use serde_json::{Map, Value};
   use std::sync::Arc;
 
-  pub(crate) fn generate_pcs_solidity_unit_test_data<E: Engine, EE: EvaluationEngineTrait<E>>(
-    num_vars: usize,
-  ) -> (
-    <E::CE as CommitmentEngineTrait<E>>::Commitment,
-    Vec<E::Scalar>,
-    E::Scalar,
-    EE::EvaluationArgument,
-    EE::VerifierKey,
-  ) {
-    use rand_core::SeedableRng;
+  // pub(crate) fn generate_pcs_solidity_unit_test_data<E: Engine + Serialize, EE: EvaluationEngineTrait<E>>(
+  //   num_vars: usize,
+  // ) -> (
+  //   <E::CE as CommitmentEngineTrait<E>>::Commitment,
+  //   Vec<E::Scalar>,
+  //   E::Scalar,
+  //   EE::EvaluationArgument,
+  //   EE::VerifierKey,
+  // ) {
+  //   use rand_core::SeedableRng;
 
-    let mut rng = StdRng::seed_from_u64(num_vars as u64);
+    // let mut rng = StdRng::seed_from_u64(num_vars as u64);
 
-    let (poly, point, eval) =
-      crate::provider::util::test_utils::random_poly_with_eval::<E, StdRng>(num_vars, &mut rng);
+  //   let (poly, point, eval) =
+  //     crate::provider::util::test_utils::random_poly_with_eval::<E, StdRng>(num_vars, &mut rng);
 
-    // Mock commitment key.
-    let ck = E::CE::setup(b"test", 1 << num_vars);
-    let ck_arc = Arc::new(ck.clone());
-    // Commits to the provided vector using the provided generators.
-    let commitment = E::CE::commit(&ck_arc, poly.evaluations());
+  //   // Mock commitment key.
+  //   let ck = E::CE::setup(b"test", 1 << num_vars);
+  //   let ck_arc = Arc::new(ck.clone());
+  //   // Commits to the provided vector using the provided generators.
+  //   let commitment = E::CE::commit(&ck_arc, poly.evaluations());
 
-    let (proof, vk) = prove_verify_solidity::<E, EE>(ck_arc, &commitment, &poly, &point, &eval);
+  //   let (proof, vk) = prove_verify_solidity::<E, EE>(ck_arc, &commitment, &poly, &point, &eval);
 
-    (commitment, point, eval, proof, vk)
-  }
+  //   (commitment, point, eval, proof, vk)
+  // }
 
-  fn prove_verify_solidity<E: Engine, EE: EvaluationEngineTrait<E>>(
-    ck: Arc<<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey>,
-    commitment: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
-    poly: &MultilinearPolynomial<<E as Engine>::Scalar>,
-    point: &[<E as Engine>::Scalar],
-    eval: &<E as Engine>::Scalar,
-  ) -> (EE::EvaluationArgument, EE::VerifierKey) {
-    use crate::traits::TranscriptEngineTrait;
+  // fn prove_verify_solidity<E: Engine + Serialize, EE: EvaluationEngineTrait<E>>(
+  //   ck: Arc<<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey>,
+  //   commitment: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+  //   poly: &MultilinearPolynomial<<E as Engine>::Scalar>,
+  //   point: &[<E as Engine>::Scalar],
+  //   eval: &<E as Engine>::Scalar,
+  // ) -> (EE::EvaluationArgument, EE::VerifierKey) {
+  //   use crate::traits::TranscriptEngineTrait;
 
-    // Generate Prover and verifier key for given commitment key.
-    let ock = ck.clone();
-    let (prover_key, verifier_key) = EE::setup(ck);
+  //   // Generate Prover and verifier key for given commitment key.
+  //   let ock = ck.clone();
+  //   let (prover_key, verifier_key) = EE::setup(ck);
 
-    // Generate proof.
-    let mut prover_transcript = E::TE::new(b"TestEval");
-    let proof: EE::EvaluationArgument = EE::prove(
-      &*ock,
-      &prover_key,
-      &mut prover_transcript,
-      commitment,
-      poly.evaluations(),
-      point,
-      eval,
-    )
-    .unwrap();
-    let pcp = prover_transcript.squeeze(b"c").unwrap();
+  //   // Generate proof.
+  //   let mut prover_transcript = E::TE::new(b"TestEval");
+  //   let proof: EE::EvaluationArgument = EE::prove(
+  //     &*ock,
+  //     &prover_key,
+  //     &mut prover_transcript,
+  //     commitment,
+  //     poly.evaluations(),
+  //     point,
+  //     eval,
+  //   )
+  //   .unwrap();
+  //   let pcp = prover_transcript.squeeze(b"c").unwrap();
 
-    // Verify proof.
-    let mut verifier_transcript = E::TE::new(b"TestEval");
-    EE::verify(
-      &verifier_key,
-      &mut verifier_transcript,
-      commitment,
-      point,
-      eval,
-      &proof,
-    )
-    .unwrap();
-    let pcv = verifier_transcript.squeeze(b"c").unwrap();
+  //   // Verify proof.
+  //   let mut verifier_transcript = E::TE::new(b"TestEval");
+  //   EE::verify(
+  //     &verifier_key,
+  //     &mut verifier_transcript,
+  //     commitment,
+  //     point,
+  //     eval,
+  //     &proof,
+  //   )
+  //   .unwrap();
+  //   let pcv = verifier_transcript.squeeze(b"c").unwrap();
 
-    // Check if the prover transcript and verifier transcript are kept in the same state.
-    assert_eq!(pcp, pcv);
+  //   // Check if the prover transcript and verifier transcript are kept in the same state.
+  //   assert_eq!(pcp, pcv);
 
-    (proof, verifier_key)
-  }
+  //   (proof, verifier_key)
+  // }
 
   pub(crate) fn field_elements_to_json<E: Engine>(field_elements: &[E::Scalar]) -> Vec<Value> {
     let mut value_vector = vec![];
