@@ -1,5 +1,6 @@
 //! This module implements various gadgets necessary for Nova and applications built with Nova.
 mod ecc;
+pub mod lookup;
 pub(crate) use ecc::AllocatedPoint;
 
 mod nonnative;
