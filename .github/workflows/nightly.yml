@@ -12,10 +12,10 @@ env:
 
 jobs:
   unused-dependencies:
-    uses: lurk-lab/ci-workflows/.github/workflows/unused-deps.yml@main
+    uses: argumentcomputer/ci-workflows/.github/workflows/unused-deps.yml@main
 
   rust-version-check:
-    uses: lurk-lab/ci-workflows/.github/workflows/rust-version-check.yml@main
+    uses: argumentcomputer/ci-workflows/.github/workflows/rust-version-check.yml@main
 
   typos:
-    uses: lurk-lab/ci-workflows/.github/workflows/typos.yml@main
+    uses: argumentcomputer/ci-workflows/.github/workflows/typos.yml@main

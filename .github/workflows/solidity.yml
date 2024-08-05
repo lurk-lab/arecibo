@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: lurk-lab/ci-workflows
+          repository: argumentcomputer/ci-workflows
       - uses: ./.github/actions/ci-env
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -48,7 +48,7 @@ jobs:
       - name: Check out `solidity-verifier` for tests
         uses: actions/checkout@v4
         with:
-          repository: lurk-lab/solidity-verifier
+          repository: argumentcomputer/solidity-verifier
           path: solidity-verifier
           submodules: recursive
       - name: Install Foundry
@@ -150,7 +150,7 @@ jobs:
         if: steps.solidity-test.outcome != 'success' && (github.event_name != 'pull_request' || github.event.action == 'enqueued')
         uses: micalevisk/last-issue-action@v2
         with:
-          repository: lurk-lab/solidity-verifier
+          repository: argumentcomputer/solidity-verifier
           state: open
           # Find the last updated open issue that has these labels:
           labels: |
@@ -162,7 +162,7 @@ jobs:
         if: steps.solidity-test.outcome != 'success' && (github.event_name != 'pull_request' || github.event.action == 'enqueued')
         with:
           token: ${{ secrets.REPO_TOKEN }}
-          repository: lurk-lab/solidity-verifier
+          repository: argumentcomputer/solidity-verifier
           issue-number: ${{ steps.last-issue.outputs.issue-number }}
           title: ":rotating_light: Arecibo compatibility is broken"
           content-filepath: .github/SOLIDITY_COMPAT_ISSUE.md

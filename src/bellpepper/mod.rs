@@ -1,6 +1,6 @@
 //! Support for generating R1CS from [Bellpepper].
 //!
-//! [Bellpepper]: https://github.com/lurk-lab/bellpepper
+//! [Bellpepper]: https://github.com/argumentcomputer/bellpepper
 
 pub mod r1cs;
 pub mod shape_cs;

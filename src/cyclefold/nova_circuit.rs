@@ -270,7 +270,7 @@ where
     ),
     SynthesisError,
   > {
-    // Follows the outline written down here https://hackmd.io/@lurk-lab/HybHrnNFT
+    // Follows the outline written down here https://hackmd.io/@argumentcomputer/HybHrnNFT
 
     // Calculate the hash of the non-deterministic advice for the primary circuit
     let mut ro_p = E1::ROCircuit::new(

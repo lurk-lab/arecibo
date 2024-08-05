@@ -1,19 +1,19 @@
 [package]
 name = "arecibo"
 version = "0.2.0"
-authors = ["Srinath Setty <srinath@microsoft.com>", "Lurk Engineering <engineering@lurk-lab.com>"]
+authors = ["Srinath Setty <srinath@microsoft.com>", "Lurk Engineering <engineering@argument.xyz>"]
 edition = "2021"
 description = "Recursive zkSNARKs without trusted setup"
 documentation = "https://docs.rs/arecibo/"
 readme = "README.md"
-repository = "https://github.com/lurk-lab/arecibo"
+repository = "https://github.com/argumentcomputer/arecibo"
 license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 rust-version="1.79"
 
 [dependencies]
 bellpepper-core = { version = "0.4.0", default-features = false }
-bellpepper = { git="https://github.com/lurk-lab/bellpepper", branch="dev", default-features = false }
+bellpepper = { git="https://github.com/argumentcomputer/bellpepper", branch="dev", default-features = false }
 ff = { version = "0.13.0", features = ["derive"] }
 digest = "0.10"
 halo2curves = { version = "0.6.0", features = ["bits", "derive_serde"] }
@@ -23,7 +23,7 @@ rand_core = { version = "0.6", default-features = false }
 rand_chacha = "0.3"
 subtle = "2.5"
 pasta_curves = { version = "0.5.0", features = ["repr-c", "serde"] }
-neptune = { git = "https://github.com/lurk-lab/neptune", branch="dev", default-features = false, features = ["abomonation"] }
+neptune = { git = "https://github.com/argumentcomputer/neptune", branch="dev", default-features = false, features = ["abomonation"] }
 generic-array = "1.0.0"
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
 num-traits = "0.2"
@@ -49,8 +49,8 @@ rayon-scan = "0.1.0"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 # grumpkin-msm has been patched to support MSMs for the pasta curve cycle
-# see: https://github.com/lurk-lab/grumpkin-msm/pull/3
-grumpkin-msm = { git = "https://github.com/lurk-lab/grumpkin-msm", branch = "dev" }
+# see: https://github.com/argumentcomputer/grumpkin-msm/pull/3
+grumpkin-msm = { git = "https://github.com/argumentcomputer/grumpkin-msm", branch = "dev" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.0", default-features = false, features = ["js"] }

@@ -574,7 +574,7 @@ where
   E1: CurveCycleEquipped,
   NC: NonUniformCircuit<E1>,
 {
-  // TODO: add back in https://github.com/lurk-lab/arecibo/issues/53
+  // TODO: add back in https://github.com/argumentcomputer/arecibo/issues/53
   // // this tests public parameters with a size specifically intended for a spark-compressed SNARK
   // let pp_hint1 = Some(SPrime::<G1>::commitment_key_floor());
   // let pp_hint2 = Some(SPrime::<G2>::commitment_key_floor());

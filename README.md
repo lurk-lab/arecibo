@@ -37,9 +37,9 @@ A front-end is a tool to take a high-level program and turn it into an intermedi
 
 1. bellpepper: The native APIs of Nova accept circuits expressed with bellpepper, a Rust toolkit to express circuits. See [minroot.rs](https://github.com/microsoft/Nova/blob/main/examples/minroot.rs) or [sha256.rs](https://github.com/microsoft/Nova/blob/main/benches/sha256.rs) for examples.
 
-2. Circom: A DSL and a compiler to transform high-level program expressed in its language into a circuit. There exist middleware to turn output of circom into a form suitable for proving with Nova. See [Nova Scotia](https://github.com/nalinbhardwaj/Nova-Scotia) and [Circom Scotia](https://github.com/lurk-lab/circom-scotia). In the future, we will add examples in the Nova repository to use these tools with Nova.
+2. Circom: A DSL and a compiler to transform high-level program expressed in its language into a circuit. There exist middleware to turn output of circom into a form suitable for proving with Nova. See [Nova Scotia](https://github.com/nalinbhardwaj/Nova-Scotia) and [Circom Scotia](https://github.com/argumentcomputer/circom-scotia). In the future, we will add examples in the Nova repository to use these tools with Nova.
 
-3. [Lurk](https://github.com/lurk-lab/lurk-rs): A Lisp dialect and a universal circuit to execute programs expressed in Lurk. The universal circuit can be proven with Nova.
+3. [Lurk](https://github.com/argumentcomputer/lurk-rs): A Lisp dialect and a universal circuit to execute programs expressed in Lurk. The universal circuit can be proven with Nova.
 
 In the future, we plan to support [Noir](https://noir-lang.org/), a Rust-like DSL and a compiler to transform those programs into an IR. See [this](https://github.com/microsoft/Nova/issues/275) GitHub issue for details.
 
@@ -79,4 +79,4 @@ Abhiram Kothapalli, and Srinath Setty
 IACR ePrint 2022/1758
 
 ## Acknowledgments
-See the contributors list [here](https://github.com/lurk-lab/arecibo/graphs/contributors)
+See the contributors list [here](https://github.com/argumentcomputer/arecibo/graphs/contributors)
